@@ -50,7 +50,7 @@ def run_once(func):
 
 @rank_0
 def print_rank_0(message):
-    print(message, flush=True)
+    print(f"[llm toolkit]: {message}", flush=True)
 
 @rank_0
 def safe_dict2file(dictionary:Dict, filename):

@@ -17,7 +17,7 @@ _deps = [
 'pandas',
 'peft',
 'pynvml',
-'torch==2.0.1',
+'torch',
 'tqdm',
 'transformers',
 'SentencePiece',
