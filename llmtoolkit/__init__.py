@@ -8,7 +8,6 @@ from .arguments import (
     GenerationArguments,
 )
 from .callbacks import (
-    MMLUEvalCallback,
     EmptycacheCallback,
     PT_ProfCallback,
     StepInfoCallback,
@@ -18,6 +17,9 @@ from .dataset import (
     DEFAULT_PAD_TOKEN,
     make_data_module,
     generate_mmlu_dataset,
+)
+from .evaluate import (
+    eval,
 )
 from .flashattn import (
     replace_llama_attn_with_flash_attn,

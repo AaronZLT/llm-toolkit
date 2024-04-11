@@ -45,6 +45,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Use flash attention? default = False"},
     )
+    only_embedding: bool = field(
+        default=False,
+        metadata={"help": "Only finetune embedding"},
+    )
 
 @dataclass
 class DataArguments:

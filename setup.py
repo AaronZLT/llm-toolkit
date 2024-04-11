@@ -23,6 +23,8 @@ _deps = [
 'SentencePiece',
 'protobuf',
 'scikit-learn',
+'matplotlib',
+'lm-eval',
 ]
 
 deps = {b: a for a, b in (re.findall(r"^(([^!=<>~ ]+)(?:[!=<>~ ].*)?$)", x)[0] for x in _deps)}
@@ -45,12 +47,14 @@ install_requires = [
     deps["SentencePiece"],
     deps["protobuf"],
     deps["scikit-learn"],
+    deps["matplotlib"],
+    deps["lm-eval"],
 ]
 
 setuptools.setup(
     name="llmtoolkit",
     version="0.0.1",
-    author="HPMLL",
+    author="aaron",
     author_email="aaron_zlt@outlook.com",
     description="This is the package for benchmarking Large Language Models.",
     long_description=long_description,

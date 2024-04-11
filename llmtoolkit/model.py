@@ -18,6 +18,7 @@ from peft import (
     get_peft_model,
 )
 from peft.tuners.lora import LoraLayer
+from peft import get_peft_config, get_peft_model, PromptTuningInit, PromptTuningConfig, TaskType, PeftType
 
 from .utils import (
     print_rank_0,
@@ -197,6 +198,20 @@ def get_accelerate_model(args, checkpoint_dir):
             )
         model = get_peft_model(model, config)
 
+    if args.only_embedding:
+        for n, p in model.named_parameters():
+            if "lora" in n:
+                p.requires_grad = False
+
+        # config = PromptTuningConfig(
+        #     task_type="CAUSAL_LM",
+        #     prompt_tuning_init=PromptTuningInit.TEXT,
+        #     num_virtual_tokens=8,
+        #     prompt_tuning_init_text="This is a PROMPT:",
+        #     tokenizer_name_or_path=args.model_name_or_path,
+        # )
+        # model = get_peft_model(model, config)
+
         if args.flash_attn or args.deepspeed != None:
             for name, module in model.named_modules():
                 print_rank_0(name)
@@ -208,7 +223,7 @@ def get_accelerate_model(args, checkpoint_dir):
                     if hasattr(module, 'weight'):
                         if module.weight.dtype == torch.float32:
                             module = module.to(torch.float16 if args.fp16 else torch.bfloat16)
-        
+
     if hasattr(model, "enable_input_require_grads"):
         model.enable_input_require_grads()
     else:

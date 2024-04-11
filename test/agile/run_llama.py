@@ -11,7 +11,7 @@ import gc
 import warnings
 import threading
 import time
-import datetime
+from datetime import datetime
 from os.path import exists, join, isdir
 from dataclasses import dataclass, field
 import sys
@@ -1317,4 +1317,17 @@ def train():
             fout.write(json.dumps(all_metrics))
     
 if __name__ == "__main__":
+    torch.cuda.memory._record_memory_history(max_entries=100000)
     train()
+    
+    timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+    file_name = f"visual_mem_{timestamp}.pickle"
+    # save record:
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0:
+            torch.cuda.memory._dump_snapshot(file_name)
+    else:
+        torch.cuda.memory._dump_snapshot(file_name)
+
+    # Stop recording memory snapshot history:
+    torch.cuda.memory._record_memory_history(enabled=None)
