@@ -32,7 +32,11 @@ from .model import (
 from .train import (
     train,
 )
+from .trainer import (
+    Seq2SeqTrainer_llmtoolkit,
+)
 from .utils import (
+    get_rank,
     print_rank_0,
     safe_dict2file,
     get_unique_key,

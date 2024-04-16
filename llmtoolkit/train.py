@@ -18,7 +18,6 @@ from .arguments import (
     GenerationArguments,
 )
 from .callbacks import (
-    MMLUEvalCallback,
     EmptycacheCallback,
     PT_ProfCallback,
     StepInfoCallback,
@@ -31,6 +30,9 @@ from .model import (
     get_accelerate_model,
     get_last_checkpoint,
     print_trainable_parameters,
+)
+from .trainer import (
+    Seq2SeqTrainer_llmtoolkit,
 )
 from .utils import (
     print_rank_0,
@@ -65,13 +67,8 @@ def train():
     print_rank_0(model)
 
     data_module = make_data_module(tokenizer=tokenizer, args=args)
-
-    if not args.hard_padding:
-        raise ValueError(f"--hard_padding must be True, or throughput may be incorrect.")
     
-    token_per_step = args.per_device_train_batch_size*n_gpus*(args.source_max_len+args.target_max_len)
-
-    trainer = Seq2SeqTrainer(
+    trainer = Seq2SeqTrainer_llmtoolkit(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
@@ -87,15 +84,11 @@ def train():
     if args.use_lora:
         pass
         # trainer.add_callback(SavePeftModelCallback)
-
-    if args.do_mmlu_eval:
-        mmlu_dataset = generate_mmlu_dataset(args=args)
-        trainer.add_callback(MMLUEvalCallback(args=args,key=get_unique_key(args),trainer=trainer,tokenizer=tokenizer,mmlu_dataset=mmlu_dataset))
         
     if args.clean_cache:
         trainer.add_callback(EmptycacheCallback)
         
-    trainer.add_callback(StepInfoCallback(warmup_step=args.profiler_warmup_step, key=get_unique_key(args), token_per_step=token_per_step,output_dir=args.output_dir))
+    trainer.add_callback(StepInfoCallback(trainer=trainer, warmup_step=args.profiler_warmup_step, key=get_unique_key(args),output_dir=args.output_dir))
 
     if args.profiler=="deepspeed":
         return NotImplementedError("deepspeed is not supported")

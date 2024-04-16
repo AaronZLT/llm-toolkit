@@ -31,6 +31,7 @@ task2shot = {
     "hellaswag":10,
     "truthfulqa_mc1":0,
     "arc_challenge":25,
+    "openbookqa":5,
 }
 
 def eval(model_name_or_path:str, task2shot:Dict[str,int], output_dir:str = "output"):

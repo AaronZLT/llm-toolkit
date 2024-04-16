@@ -197,12 +197,7 @@ def get_accelerate_model(args, checkpoint_dir):
                 task_type="CAUSAL_LM",
             )
         model = get_peft_model(model, config)
-
-    if args.only_embedding:
-        for n, p in model.named_parameters():
-            if "lora" in n:
-                p.requires_grad = False
-
+        
         # config = PromptTuningConfig(
         #     task_type="CAUSAL_LM",
         #     prompt_tuning_init=PromptTuningInit.TEXT,

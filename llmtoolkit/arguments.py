@@ -7,7 +7,7 @@ import transformers
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(
-        default="EleutherAI/pythia-12b"
+        default="meta-llama/Llama-2-7b-hf"
     )
     trust_remote_code: Optional[bool] = field(
         default=False,
@@ -25,9 +25,17 @@ class ModelArguments:
         default=False,
         metadata={"help": "use LoRA-FA? default = false"},
     )
-    r: int = field(
+    lora_r: int = field(
         default=1,
         metadata={"help": "lora rank, default = 1"},
+    )
+    lora_alpha: float = field(
+        default=16,
+        metadata={"help": " Lora alpha."}
+    )
+    lora_dropout: float = field(
+        default=0.0,
+        metadata={"help":"Lora dropout."}
     )
     percent: Optional[float] = field(
         default=1.0,
@@ -78,11 +86,11 @@ class DataArguments:
         metadata={"help": "Maximum target sequence length. Sequences will be right padded (and possibly truncated)."},
     )
     hard_padding: bool = field(
-        default=True,
-        metadata={"help": "Force pad the length of input_ids (sequence length) to: source_max_len+target_max_len. Default = True"},
+        default=False,
+        metadata={"help": "Force pad the length of input_ids (sequence length) to: source_max_len+target_max_len. Default = False"},
     )
     dataset: str = field(
-        default='=alpaca-dummy',
+        default='alpaca',
         metadata={"help": "Which dataset to finetune on. See datamodule for options."}
     )
     dataset_format: Optional[str] = field(
@@ -107,30 +115,6 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=False,
         metadata={"help": "Whether to train on the input in addition to the target text."}
     )
-    mmlu_split: Optional[str] = field(
-        default='eval',
-        metadata={"help": "The MMLU split to run on"}
-    )
-    mmlu_dataset: Optional[str] = field(
-        default='mmlu-fs',
-        metadata={"help": "MMLU dataset to use: options are `mmlu-zs` for zero-shot or `mmlu-fs` for few shot."}
-    )
-    do_mmlu_eval: Optional[bool] = field(
-        default=False,
-        metadata={"help": "Whether to run the MMLU evaluation."}
-    )
-    max_mmlu_samples: Optional[int] = field(
-        default=None,
-        metadata={"help": "If set, only evaluates on `max_mmlu_samples` of the MMMLU dataset."}
-    )
-    mmlu_source_max_len: int = field(
-        default=2048,
-        metadata={"help": "Maximum source sequence length for mmlu."}
-    )
-    full_finetune: bool = field(
-        default=False,
-        metadata={"help": "Finetune the entire model without adapters."}
-    )
     adam8bit: bool = field(
         default=False,
         metadata={"help": "Use 8-bit adam."}
@@ -150,18 +134,6 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     bits: int = field(
         default=16,
         metadata={"help": "How many bits to use."}
-    )
-    lora_r: int = field(
-        default=64,
-        metadata={"help": "Lora R dimension."}
-    )
-    lora_alpha: float = field(
-        default=16,
-        metadata={"help": " Lora alpha."}
-    )
-    lora_dropout: float = field(
-        default=0.0,
-        metadata={"help":"Lora dropout."}
     )
     max_memory_MB: int = field(
         default=40000,
@@ -189,10 +161,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     lr_scheduler_type: str = field(default='linear', metadata={"help": 'Learning rate schedule. Constant a bit better than cosine, and has advantage for analysis. Linear is better tuning the loss.'})
     warmup_ratio: float = field(default=0.03, metadata={"help": 'Fraction of steps to do a warmup for'})
     logging_steps: int = field(default=10, metadata={"help": 'The frequency of update steps after which to log the loss'})
-    group_by_length: bool = field(default=False, metadata={"help": 'Group sequences into batches with same length. Saves memory and speeds up training considerably.'})
+    group_by_length: bool = field(default=True, metadata={"help": 'Group sequences into batches with same length. Saves memory and speeds up training considerably.'})
     save_strategy: str = field(default='steps', metadata={"help": 'When to save checkpoints'})
     save_steps: int = field(default=250, metadata={"help": 'How often to save a model'})
-    save_total_limit: int = field(default=3, metadata={"help": 'How many checkpoints to save before the oldest is overwritten'})
+    save_total_limit: int = field(default=99, metadata={"help": 'How many checkpoints to save before the oldest is overwritten'})
     profiler: str = field(default=None, metadata={"help": 'To profile or not to profile, that is the question?'})
     profiler_warmup_step: int = field(default=30, metadata={"help": 'profiler_warmup_step. Default = 30 steps.'})
 

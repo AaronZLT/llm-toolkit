@@ -27,11 +27,14 @@ def deprecated(func):
         return func(*args, **kwargs)
     return new_func
 
+def get_rank():
+    rank = 0 if not torch.distributed.is_initialized() else torch.distributed.get_rank()
+    return rank
+
 def rank_0(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        rank = 0 if not torch.distributed.is_initialized() else torch.distributed.get_rank()
-        if rank == 0:
+        if get_rank() == 0:
             return func(*args, **kwargs)
         # else:
         #     print(f"Skipping function {func.__name__} on rank {rank}")
@@ -172,13 +175,11 @@ class hardware_info:
         self.n_xpus = torch.xpu.device_count()
         
     def summary(self):
-        print_rank_0("")
-        print_rank_0(f"Detected {self.n_gpus} GPU(s)")
+        print_rank_0(f"\nDetected {self.n_gpus} GPU(s)\n")
         gpu_tuple_list = [(gpu['name'], gpu['total_memory']) for gpu in self.gpu_info]
         counter = Counter(gpu_tuple_list)
         for gpu, count in counter.items():
             name, memory = gpu
             print_rank_0(f"{count} x {name}, Memory: {memory}")
         
-        print_rank_0("")
-        print_rank_0(f"Detected {self.n_xpus} XPU(s)")
+        print_rank_0(f"\nDetected {self.n_xpus} XPU(s)\n")

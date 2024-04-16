@@ -207,7 +207,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
             dataset_format == 'alpaca' or dataset_format == 'alpaca-clean' or dataset_format == 'alpaca-dummy' or
             (dataset_format is None and args.dataset in ['alpaca', 'alpaca-clean', 'alpaca-dummy'])
         ):
-            dataset = dataset.map(extract_alpaca_dataset, remove_columns=['instruction'])
+            dataset = dataset.map(extract_alpaca_dataset)
         elif dataset_format == 'chip2' or (dataset_format is None and args.dataset == 'chip2'):
             dataset = dataset.map(lambda x: {
                 'input': x['text'].split('\n<bot>: ')[0].replace('<human>: ', ''),
@@ -279,6 +279,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         data_collator=data_collator
     )
 
+# depre
 def generate_mmlu_dataset(args):
     if args.mmlu_dataset == 'mmlu-zs':
         mmlu_dataset = load_dataset("json", data_files={
