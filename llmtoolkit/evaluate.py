@@ -1,5 +1,7 @@
 import os
+import re
 import time
+import math
 import numpy as np
 from tqdm import tqdm
 from typing import Optional, Dict, Sequence, Tuple, Union, List
@@ -13,6 +15,8 @@ import lm_eval
 from .utils import (
     print_rank_0,
     safe_dict2file,
+    get_rank,
+    create_timestamp,
 )
 from .dataset import (
     IGNORE_INDEX,
@@ -34,11 +38,16 @@ task2shot = {
     "openbookqa":5,
 }
 
-def eval(model_name_or_path:str, task2shot:Dict[str,int], output_dir:str = "output"):
+def eval(model_name_or_path:str, peft:str, task2shot:Dict[str,int], output_dir:str, all_output:bool = False):
     task_manager = lm_eval.tasks.TaskManager()
     shot2task={}
     results=[]
     
+    model_args=f"pretrained={model_name_or_path},tokenizer={model_name_or_path}"
+
+    if peft != None:
+        model_args+=f",peft={peft}"
+
     for key, value in task2shot.items():
         if value not in shot2task:
             shot2task[value] = [key]
@@ -49,11 +58,33 @@ def eval(model_name_or_path:str, task2shot:Dict[str,int], output_dir:str = "outp
         print_rank_0(f"evaluating {tasks}")
         results.append(lm_eval.simple_evaluate(
             model="hf",
-            model_args=f"pretrained={model_name_or_path},tokenizer={model_name_or_path}",
+            model_args=model_args,
             tasks=tasks,
             num_fewshot=shot,
             task_manager=task_manager,
             batch_size="auto"))
-        
-    for result in results:
-        safe_dict2file(result["results"], os.path.join(output_dir,"eval_result.txt"))
+
+    # save the result
+    if get_rank() == 0:
+        if output_dir == None:
+            output_dir = f"eval_{create_timestamp()}"
+        for result in results:
+            if all_output:
+                safe_dict2file(result, os.path.join(output_dir,"eval_result.txt"))
+            else:
+                safe_dict2file(result["results"], os.path.join(output_dir,"eval_result.txt"))
+
+def simple_eval(model_name_or_path:str, peft:str, tasks:List, output_dir:str = None, all_output:bool = False):
+    task_shot = {task: task2shot[task] for task in tasks}
+    eval(model_name_or_path, peft, task_shot, output_dir, all_output)
+
+"""
+We also provide some other in-training eval fuctions.
+"""
+
+def eval_perplexity(eval_loss):
+    try:
+        perplexity = math.exp(eval_loss)
+    except OverflowError:
+        perplexity = float("inf")
+    return perplexity

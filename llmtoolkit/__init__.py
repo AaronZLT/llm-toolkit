@@ -16,10 +16,9 @@ from .dataset import (
     IGNORE_INDEX,
     DEFAULT_PAD_TOKEN,
     make_data_module,
-    generate_mmlu_dataset,
 )
 from .evaluate import (
-    eval,
+    simple_eval,
 )
 from .flashattn import (
     replace_llama_attn_with_flash_attn,
@@ -37,6 +36,7 @@ from .trainer import (
 )
 from .utils import (
     get_rank,
+    get_world_size,
     print_rank_0,
     safe_dict2file,
     get_unique_key,

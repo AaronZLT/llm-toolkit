@@ -131,27 +131,31 @@ def get_accelerate_model(args, checkpoint_dir):
         trust_remote_code=args.trust_remote_code,
         use_auth_token=args.use_auth_token,
     )
-    if tokenizer._pad_token is None:
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-            tokenizer=tokenizer,
-            model=model,
-        )
-        
-    # if 'llama' in args.model_name_or_path or isinstance(tokenizer, LlamaTokenizer):
-    #     # LLaMA tokenizer may not have correct special tokens set.
-    #     # Check and add them if missing to prevent them from being parsed into different tokens.
-    #     # Note that these are present in the vocabulary.
-    #     # Note also that `model.config.pad_token_id` is 0 which corresponds to `<unk>` token.
-    #     print_rank_0('Adding special tokens.')
-    #     tokenizer.add_special_tokens({
-    #             "eos_token": tokenizer.convert_ids_to_tokens(model.config.eos_token_id),
-    #             "bos_token": tokenizer.convert_ids_to_tokens(model.config.bos_token_id),
-    #             "unk_token": tokenizer.convert_ids_to_tokens(
-    #                 model.config.pad_token_id if model.config.pad_token_id != -1 else tokenizer.pad_token_id
-    #             ),
-    #     })
     
+    # add special tokens, 2 steps
+    # 1. add pad_token, as universial "[PAD]"
+    # 2. add eos_token, bos_token, unk_token based on model config.json, if and only if the tokenizer is llama tokenizer.
+    special_tokens_dict = dict()
+    if tokenizer.pad_token is None:
+        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
+
+    if 'llama' in args.model_name_or_path.lower() or isinstance(tokenizer, LlamaTokenizer):
+        print_rank_0("llama in or isinstance")
+        if tokenizer.eos_token is None:
+            special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+        else:
+            print_rank_0(tokenizer.eos_token)
+        if tokenizer.bos_token is None:
+            special_tokens_dict["bos_token"] = tokenizer.convert_ids_to_tokens(model.config.bos_token_id)
+        else:
+            print_rank_0(tokenizer.bos_token)
+        if tokenizer.unk_token is None:
+            special_tokens_dict["unk_token"] = tokenizer.convert_ids_to_tokens(model.config.pad_token_id if model.config.pad_token_id != -1 else tokenizer.pad_token_id)
+        else:
+            print_rank_0(tokenizer.unk_token)
+
+    smart_tokenizer_and_embedding_resize(special_tokens_dict, tokenizer, model)
+
     # TODO ltzhang: find a correct way for quant training.
     if args.quant:
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=args.gradient_checkpointing)
@@ -247,6 +251,7 @@ def smart_tokenizer_and_embedding_resize(
 
     Note: This is the unoptimized version that may make your embedding size not be divisible by 64.
     """
+    print_rank_0(f"adding special tokens, {special_tokens_dict}")
     num_new_tokens = tokenizer.add_special_tokens(special_tokens_dict)
     model.resize_token_embeddings(len(tokenizer))
     

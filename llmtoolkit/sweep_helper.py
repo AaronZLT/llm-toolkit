@@ -25,11 +25,10 @@ from .utils import (
     safe_readjson,
     hardware_info,
     print_rank_0,
+    create_timestamp,
 )
 def save_cmds_config(cmds:List, config:Dict):
-    current_time = datetime.datetime.now()
-    formatted_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-        
+    formatted_time = create_timestamp()
     os.makedirs(f"benchmark_{formatted_time}")
     print_rank_0(f"Saving your cmds and config to benchmark_{formatted_time}/cmds and benchmark_{formatted_time}/config ...")
     safe_list2file(cmds, os.path.join(f"benchmark_{formatted_time}","cmds.sh"))

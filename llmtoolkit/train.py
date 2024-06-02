@@ -9,6 +9,8 @@ from transformers import (
     set_seed,
     Seq2SeqTrainer,
 )
+import accelerate
+from accelerate import Accelerator
 import deepspeed
 
 from .arguments import (
@@ -21,10 +23,10 @@ from .callbacks import (
     EmptycacheCallback,
     PT_ProfCallback,
     StepInfoCallback,
+    EvalCallback,
 )
 from .dataset import (
     make_data_module,
-    generate_mmlu_dataset,
 )
 from .model import (
     get_accelerate_model,
@@ -39,6 +41,7 @@ from .utils import (
     safe_dict2file,
     get_unique_key,
     hardware_info,
+    clear_torch_cache,
 )
 
 def train():    
@@ -94,7 +97,9 @@ def train():
         return NotImplementedError("deepspeed is not supported")
     if args.profiler=="pytorch":
         trainer.add_callback(PT_ProfCallback(warmup_step=args.profiler_warmup_step, key=get_unique_key(args),output_dir=args.output_dir))
-        
+    
+    trainer.add_callback(EvalCallback())
+    
     print_trainable_parameters(model)
 
     all_metrics = {"run_name": args.run_name}
@@ -107,6 +112,7 @@ def train():
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
+        trainer.save_model()
         all_metrics.update(metrics)
     if args.do_eval:
         print_rank_0("*** Evaluate ***")
@@ -136,3 +142,4 @@ def train():
     if (args.do_train or args.do_eval or args.do_predict):
         with open(os.path.join(args.output_dir, "metrics.json"), "w") as fout:
             fout.write(json.dumps(all_metrics))
+    

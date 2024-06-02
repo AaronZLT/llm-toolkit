@@ -1,7 +1,9 @@
 import os
+import gc
 import json
 import threading
 import importlib
+import datetime
 from importlib import metadata
 import functools
 from functools import wraps
@@ -31,6 +33,10 @@ def get_rank():
     rank = 0 if not torch.distributed.is_initialized() else torch.distributed.get_rank()
     return rank
 
+def get_world_size():
+    world_size = 1 if not torch.distributed.is_initialized() else torch.distributed.get_world_size()
+    return world_size
+
 def rank_0(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -52,40 +58,47 @@ def run_once(func):
     return wrapper
 
 @rank_0
-def print_rank_0(message):
-    print(f"[llm toolkit]: {message}", flush=True)
+def create_timestamp():
+    current_time = datetime.datetime.now()
+    formatted_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    return formatted_time
 
 @rank_0
-def safe_dict2file(dictionary:Dict, filename):
+def print_rank_0(message):
+    print(f"\033[1;33m[llm toolkit]\033[0m: {message}", flush=True)
+
+@rank_0
+def safe_dict2file(dictionary: dict, filename: str):
     lock = threading.Lock()
-    lock.acquire()
-    with open(filename, 'a') as json_file:
-        try:
+    with lock:
+        directory = os.path.dirname(filename)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        with open(filename, 'a') as json_file:
             json.dump(dictionary, json_file, indent=4)
             json_file.write("\n")
-        finally:
-            lock.release()
-            
+
 @rank_0
 def safe_list2file(l:List, filename):
     lock = threading.Lock()
-    lock.acquire()
-    with open(filename, 'a') as file:
-        try:
+    with lock:
+        directory = os.path.dirname(filename)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        with open(filename, 'a') as file:
             for i in l:
                 file.write(i + "\n")
-        finally:
-            lock.release()
 
 def safe_readjson(filename):
     lock = threading.Lock()
-    lock.acquire()
-    with open(filename, 'r') as json_file:
-        try:
+    with lock:
+        with open(filename, 'r') as json_file:
             d = json.load(json_file)
-        finally:
-            lock.release()    
     return d
+
+def clear_torch_cache() -> None:
+    gc.collect()
+    torch.cuda.empty_cache()
 
 def get_unique_key(args):
     model = args.model_name_or_path.split('/')[-1]
@@ -109,7 +122,7 @@ def get_unique_key(args):
     # offload
     offload = "-" if not args.deepspeed else "off" if 'off' in args.deepspeed else "-"
 
-    key = f"{model}-bs{bs}-seq{seq}-{lora}-{flash}-{recomputation}-{quant}-{datatype}-{zero}-{offload}"
+    key = f"{model}-seq{seq}-{lora}-{flash}-{recomputation}-{quant}-{datatype}-{zero}-{offload}"
     return key
 
 def is_ipex_available():
@@ -175,11 +188,11 @@ class hardware_info:
         self.n_xpus = torch.xpu.device_count()
         
     def summary(self):
-        print_rank_0(f"\nDetected {self.n_gpus} GPU(s)\n")
+        print_rank_0(f"Detected {self.n_gpus} GPU(s)\n")
         gpu_tuple_list = [(gpu['name'], gpu['total_memory']) for gpu in self.gpu_info]
         counter = Counter(gpu_tuple_list)
         for gpu, count in counter.items():
             name, memory = gpu
             print_rank_0(f"{count} x {name}, Memory: {memory}")
         
-        print_rank_0(f"\nDetected {self.n_xpus} XPU(s)\n")
+        print_rank_0(f"Detected {self.n_xpus} XPU(s)\n")
