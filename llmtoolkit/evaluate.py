@@ -38,16 +38,16 @@ task2shot = {
     "openbookqa":5,
 }
 
-def eval(model_name_or_path:str, peft:str, task2shot:Dict[str,int], output_dir:str, all_output:bool = False):
+def eval(model_name_or_path:str, task2shot:Dict[str,int], peft:str = None, output_dir:str = None, all_output:bool = False):
     task_manager = lm_eval.tasks.TaskManager()
     shot2task={}
     results=[]
     
-    model_args=f"pretrained={model_name_or_path},tokenizer={model_name_or_path}"
+    model_args=f"pretrained={model_name_or_path},tokenizer={model_name_or_path},dtype=bfloat16"
 
     if peft != None:
         model_args+=f",peft={peft}"
-
+    
     for key, value in task2shot.items():
         if value not in shot2task:
             shot2task[value] = [key]
@@ -68,15 +68,19 @@ def eval(model_name_or_path:str, peft:str, task2shot:Dict[str,int], output_dir:s
     if get_rank() == 0:
         if output_dir == None:
             output_dir = f"eval_{create_timestamp()}"
+        safe_dict2file({"model":model_name_or_path,"peft":peft},os.path.join(output_dir,"eval_result.txt"))
         for result in results:
             if all_output:
                 safe_dict2file(result, os.path.join(output_dir,"eval_result.txt"))
             else:
                 safe_dict2file(result["results"], os.path.join(output_dir,"eval_result.txt"))
 
-def simple_eval(model_name_or_path:str, peft:str, tasks:List, output_dir:str = None, all_output:bool = False):
+def simple_eval(model_name_or_path:str, peft:str = None, tasks:List = None, output_dir:str = None, all_output:bool = False):
+    if tasks == None:
+        raise ValueError("Evaluate tasks must be specified!")
+
     task_shot = {task: task2shot[task] for task in tasks}
-    eval(model_name_or_path, peft, task_shot, output_dir, all_output)
+    eval(model_name_or_path, task_shot, peft, output_dir, all_output)
 
 """
 We also provide some other in-training eval fuctions.

@@ -45,6 +45,54 @@ def find_all_linear_names(args, model):
         lora_module_names.remove('lm_head')
     return list(lora_module_names)
 
+def peft_model(args, model):
+    if args.peft in ["lora","lora-fa","vera"]:
+        modules=[]
+        if args.lora_modules == "all":
+            modules = find_all_linear_names(args, model)
+        elif args.lora_modules == "attention":
+            modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj']
+        elif args.lora_modules == "mlp":
+            modules = ['up_proj', 'down_proj', 'gate_proj']
+        else:
+            modules = find_all_linear_names(args, model)
+            target_modules = args.lora_modules.split(",")
+            for m in target_modules:
+                if m not in modules:
+                    raise ValueError(f"You must choose your lora modules from {modules}.")
+            modules = target_modules
+        print_rank_0(f'adding LoRA modules to {modules}')
+
+        if args.peft == "lora":
+            config = LoraConfig(
+                r=args.lora_r,
+                lora_alpha=2*args.lora_r,
+                target_modules=modules,
+                lora_dropout=args.lora_dropout,
+                bias="none",
+                task_type="CAUSAL_LM",
+            )
+            _peft_model = get_peft_model(model, config)
+        elif args.peft == "lora-fa":
+            config = LoraConfig(
+                r=args.lora_r,
+                lora_alpha=2*args.lora_r,
+                target_modules=modules,
+                lora_dropout=args.lora_dropout,
+                bias="none",
+                task_type="CAUSAL_LM",
+            )
+            _peft_model = get_peft_model(model, config)
+            for name, param in _peft_model.named_parameters():
+                if "lora_A" in name:
+                    param.requires_grad = False
+        elif args.peft == "vera":
+            _peft_model = model
+    else:
+        _peft_model = model
+
+    return _peft_model
+        
 def get_accelerate_model(args, checkpoint_dir):
     if args.flash_attn==True:
         print_rank_0("Use FLASH ATTENTION! Replacing......")
@@ -74,6 +122,7 @@ def get_accelerate_model(args, checkpoint_dir):
     print_rank_0(f'loading base model {args.model_name_or_path}...')
     compute_dtype = (torch.float16 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
     if args.quant:
+        print_rank_0("LOADING QUANTIZED MODEL")
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
             cache_dir=args.cache_dir,
@@ -95,7 +144,7 @@ def get_accelerate_model(args, checkpoint_dir):
             use_auth_token=args.use_auth_token
         )
     else:
-        print_rank_0("=======LOAD UNQUANTED MODEL=======")
+        print_rank_0("LOADING UNQUANTIZED MODEL")
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
             cache_dir=args.cache_dir,
@@ -122,85 +171,41 @@ def get_accelerate_model(args, checkpoint_dir):
     model.config.torch_dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
 
     # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.model_name_or_path,
-        cache_dir=args.cache_dir,
-        padding_side="right",
-        use_fast=False,
-        tokenizer_type='llama' if 'llama' in args.model_name_or_path else None,
-        trust_remote_code=args.trust_remote_code,
-        use_auth_token=args.use_auth_token,
-    )
-    
+    # tokenizer = AutoTokenizer.from_pretrained(
+    #     args.model_name_or_path,
+    #     cache_dir=args.cache_dir,
+    #     padding_side="right",
+    #     use_fast=False,
+    #     tokenizer_type='llama' if 'llama' in args.model_name_or_path else None,
+    #     trust_remote_code=args.trust_remote_code,
+    #     use_auth_token=args.use_auth_token,
+    # )
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+
     # add special tokens, 2 steps
-    # 1. add pad_token, as universial "[PAD]"
+    # 1. add pad_token, as universial "<[PAD]>"
     # 2. add eos_token, bos_token, unk_token based on model config.json, if and only if the tokenizer is llama tokenizer.
     special_tokens_dict = dict()
     if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
-
-    if 'llama' in args.model_name_or_path.lower() or isinstance(tokenizer, LlamaTokenizer):
-        print_rank_0("llama in or isinstance")
-        if tokenizer.eos_token is None:
-            special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
-        else:
-            print_rank_0(tokenizer.eos_token)
-        if tokenizer.bos_token is None:
-            special_tokens_dict["bos_token"] = tokenizer.convert_ids_to_tokens(model.config.bos_token_id)
-        else:
-            print_rank_0(tokenizer.bos_token)
-        if tokenizer.unk_token is None:
-            special_tokens_dict["unk_token"] = tokenizer.convert_ids_to_tokens(model.config.pad_token_id if model.config.pad_token_id != -1 else tokenizer.pad_token_id)
-        else:
-            print_rank_0(tokenizer.unk_token)
+        special_tokens_dict["pad_token"] = tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+    if tokenizer.eos_token is None:
+        special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+    if tokenizer.bos_token is None:
+        special_tokens_dict["bos_token"] = tokenizer.convert_ids_to_tokens(model.config.bos_token_id)
+    if tokenizer.unk_token is None:
+        special_tokens_dict["unk_token"] = special_tokens_dict["pad_token"]
 
     smart_tokenizer_and_embedding_resize(special_tokens_dict, tokenizer, model)
+    print_rank_0(f"pad_token: {tokenizer.pad_token}")
+    print_rank_0(f"eos_token: {tokenizer.eos_token}")
+    print_rank_0(f"bos_token: {tokenizer.bos_token}")
+    print_rank_0(f"unk_token: {tokenizer.unk_token}")
 
-    # TODO ltzhang: find a correct way for quant training.
     if args.quant:
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=args.gradient_checkpointing)
 
-    if args.use_lora:
-        print_rank_0(f'adding LoRA modules...')
-
-        modules=[]
-        if args.lora_modules == "all":
-            modules = find_all_linear_names(args, model)
-        elif args.lora_modules == "attention":
-            modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj']
-        elif args.lora_modules == "mlp":
-            modules = ['up_proj', 'down_proj', 'gate_proj']
-        else:
-            modules = find_all_linear_names(args, model)
-            target_modules = args.lora_modules.split(",")
-            for m in target_modules:
-                if m not in modules:
-                    raise ValueError(f"You must choose your lora modules from {modules}.")
-            modules = target_modules
-
-        print_rank_0(modules)
-        if args.fa:
-            config = LoraConfig(
-                r=args.lora_r,
-                lora_alpha=2*args.lora_r,
-                target_modules=modules,
-                lora_dropout=args.lora_dropout,
-                bias="none",
-                task_type="CAUSAL_LM",
-                fa=args.fa,
-                percent=args.percent,
-                init_method = args.init_method,
-            )
-        else:
-            config = LoraConfig(
-                r=args.lora_r,
-                lora_alpha=2*args.lora_r,
-                target_modules=modules,
-                lora_dropout=args.lora_dropout,
-                bias="none",
-                task_type="CAUSAL_LM",
-            )
-        model = get_peft_model(model, config)
+    if args.peft:
+        model = peft_model(args,model)
         
         # config = PromptTuningConfig(
         #     task_type="CAUSAL_LM",
@@ -229,7 +234,7 @@ def get_accelerate_model(args, checkpoint_dir):
         def make_inputs_require_grad(module, input, output):
             output.requires_grad_(True)
 
-        model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)    
+        model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
     return model, tokenizer
 

@@ -53,8 +53,19 @@ def train():
     args = argparse.Namespace(
         **vars(model_args), **vars(data_args), **vars(training_args)
     )
-    print_rank_0(args)
 
+    # run_name is post inited in Transformers: if self.run_name is None: self.run_name = self.output_dir
+    if args.run_name == args.output_dir:
+        print_rank_0(f"Set run_name from '{args.output_dir}' to '{get_unique_key(args)}'")
+        args.run_name = get_unique_key(args)
+        training_args.run_name = get_unique_key(args)
+        
+    if args.output_dir == "default_output":
+        print_rank_0(f"Set output_dir from 'default_output' to '{get_unique_key(args)}'")
+        args.output_dir = get_unique_key(args)
+        training_args.output_dir = get_unique_key(args)
+
+    print_rank_0(args)
     set_seed(args.seed)
     # deepspeed.ops.op_builder.CPUAdamBuilder().load()
     hardware = hardware_info()
@@ -79,9 +90,9 @@ def train():
     )
     
     try:
-        print_rank_0(model.hf_device_map)
+        print_rank_0(f"Premade device map: {model.hf_device_map}")
     except:
-        print_rank_0("model has no hf_device_map.")
+        print_rank_0("No hf_device_map has been set.")
 
     # Callbacks
     if args.use_lora:
@@ -91,7 +102,7 @@ def train():
     if args.clean_cache:
         trainer.add_callback(EmptycacheCallback)
         
-    trainer.add_callback(StepInfoCallback(trainer=trainer, warmup_step=args.profiler_warmup_step, key=get_unique_key(args),output_dir=args.output_dir))
+    trainer.add_callback(StepInfoCallback(trainer=trainer, warmup_step=args.profiler_warmup_step, key=get_unique_key(args), step_log = args.profiler_step_log, output_dir=args.output_dir))
 
     if args.profiler=="deepspeed":
         return NotImplementedError("deepspeed is not supported")

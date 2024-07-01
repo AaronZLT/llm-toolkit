@@ -11,6 +11,7 @@ import warnings
 from typing import Dict, List
 from packaging import version
 from collections import Counter
+import matplotlib.pyplot as plt
 
 import torch
 from pynvml import *
@@ -100,29 +101,58 @@ def clear_torch_cache() -> None:
     gc.collect()
     torch.cuda.empty_cache()
 
-def get_unique_key(args):
-    model = args.model_name_or_path.split('/')[-1]
+@rank_0
+def plot_xy(x, y, title):
+    if len(x) != len(y):
+        raise ValueError("length x != length y")
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(x, y, marker='o')
+    ax.set_title(title)
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.grid(True)
+
+    return fig
+
+@rank_0
+def save_fig(fig, path):
+    fig.savefig(path)
     
+def get_unique_key(args):
+    # model, dataset, hyperparam
+    model = args.model_name_or_path.split('/')[-1]
+    gpu_number = get_world_size()
     bs = args.per_device_train_batch_size
     seq = args.source_max_len + args.target_max_len
-    # lora
-    lora = args.use_lora
-    lora_config = f"r{args.lora_r}-a{int(args.lora_alpha)}-dropout{args.lora_dropout}-percent{args.percent}-module{args.lora_modules}"
-    lora = "-" if not args.use_lora else f"lora-fa-{lora_config}" if args.fa else f"lora-{lora_config}"
+    lr = args.learning_rate
+    dataset = args.dataset
+    lr_sche = args.lr_scheduler_type
+    
+    # peft
+    peft = "-" if not args.peft else args.peft
+    peft_config = "-" if not peft else f"r{args.lora_r}-a{int(args.lora_alpha)}-dropout{args.lora_dropout}-percent{args.lora_percent}-module{args.lora_modules}"
+
     # flash attention
     flash = "flash" if args.flash_attn else "-"
+
     # recomputation
     recomputation = "recompute" if args.gradient_checkpointing else "-"
+
     # quant
     quant = "quant" if args.quant else "-"
+
     # datatype
     datatype = "fp16" if args.fp16 else "bf16" if args.bf16 else "-"
+
     # zero
     zero = "-" if not args.deepspeed else "zero3" if '3' in args.deepspeed else "zero2" if '2' in args.deepspeed else "-"
+
     # offload
     offload = "-" if not args.deepspeed else "off" if 'off' in args.deepspeed else "-"
 
-    key = f"{model}-seq{seq}-{lora}-{flash}-{recomputation}-{quant}-{datatype}-{zero}-{offload}"
+    key = f"{model}-dataset_{dataset}-gpus{gpu_number}-bs{bs}-seq{seq}-lr{lr}-{lr_sche}-{peft}-{peft_config}-{flash}-{recomputation}-{quant}-{datatype}-{zero}-{offload}"
+
     return key
 
 def is_ipex_available():
@@ -188,11 +218,11 @@ class hardware_info:
         self.n_xpus = torch.xpu.device_count()
         
     def summary(self):
-        print_rank_0(f"Detected {self.n_gpus} GPU(s)\n")
+        print_rank_0(f"Detected {self.n_gpus} GPU(s)")
         gpu_tuple_list = [(gpu['name'], gpu['total_memory']) for gpu in self.gpu_info]
         counter = Counter(gpu_tuple_list)
         for gpu, count in counter.items():
             name, memory = gpu
             print_rank_0(f"{count} x {name}, Memory: {memory}")
         
-        print_rank_0(f"Detected {self.n_xpus} XPU(s)\n")
+        print_rank_0(f"\nDetected {self.n_xpus} XPU(s)\n")

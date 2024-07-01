@@ -18,7 +18,7 @@ from .utils import (
 )
 
 IGNORE_INDEX = -100
-DEFAULT_PAD_TOKEN = "[PAD]"
+DEFAULT_PAD_TOKEN = "<[PAD]>"
 
 """
 Below is the train prompt and preprocess functions for generating train dataset.
@@ -53,7 +53,9 @@ class SFTPrompt:
         Q: Where were the 1992 Olympics held?\n\
         A: The 1992 Olympics were held in Barcelona, Spain.\
         \n\nQ: {question}\nA:')
-
+    math_input: str = ("Question: {instruction}\nAnswer: ")
+    math_output: str = ("{output}\n\n")
+    
 def extract_super_natural_instructions_data(examples, extract_reformulations=False):
     out = {
         'input': [],
@@ -72,23 +74,28 @@ def extract_super_natural_instructions_data(examples, extract_reformulations=Fal
     print_rank_0(out)
     return out
 
-def preprocess_alpaca(example):
-    if example.get("input", "") != "":
-        prompt_format = SFTPrompt.alpaca_input
-    else:
-        prompt_format = SFTPrompt.alpaca_noinput
-    return {'input': prompt_format.format(**example)}
+def preprocess_alpaca(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        if example.get("input", "") != "":
+            prompt_format = SFTPrompt.alpaca_input
+        else:
+            prompt_format = SFTPrompt.alpaca_noinput
+        return {'input': prompt_format.format(**example)}
+    return dataset.map(_preprocess_doc)
 
-def preprocess_gsm8k(example):
-    prompt_format_input = SFTPrompt.default_input
-    prompt_format_output = SFTPrompt.default_output
-    return {'input': prompt_format_input.format(**example), 'output': prompt_format_output.format(**example)}
+def preprocess_gsm8k(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        prompt_format_input = SFTPrompt.default_input
+        prompt_format_output = SFTPrompt.default_output
+        return {'input': prompt_format_input.format(**example), 'output': prompt_format_output.format(**example)}
+    return dataset.map(_preprocess_doc)
 
-def preprocess_truthfulqa_mc1(example):
-    
-    prompt_format_input = SFTPrompt.default_input
-    prompt_format_output = SFTPrompt.default_output
-    return {'input': prompt_format_input.format(**example), 'output': prompt_format_output.format(**example)}
+def preprocess_truthfulqa_mc1(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        prompt_format_input = SFTPrompt.default_input
+        prompt_format_output = SFTPrompt.default_output
+        return {'input': prompt_format_input.format(**example), 'output': prompt_format_output.format(**example)}
+    return dataset.map(_preprocess_doc)
 
 def preprocess_hellaswag(dataset: datasets.Dataset) -> datasets.Dataset:
     new_dataset = []
@@ -118,8 +125,58 @@ def preprocess_hellaswag(dataset: datasets.Dataset) -> datasets.Dataset:
     new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
     return new_dataset
 
-def preprocess_wikitext2(example):
-    return {'input': example["text"],'output':""}
+def preprocess_wikitext2(dataset: datasets.Dataset) -> datasets.Dataset:
+    new_dataset = []
+    def _preprocess_doc(example):
+        if len(example["text"])>1:
+            data_slice = {}
+            data_slice["input"] = example["text"]
+            data_slice["output"] = ""
+            new_dataset.append(data_slice)
+    dataset.map(_preprocess_doc)
+    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
+    return new_dataset
+
+def preprocess_e2e(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {'input': example['meaning_representation'], 'output': example['target']}
+    return dataset.map(_preprocess_doc)
+
+def preprocess_math(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {'input': SFTPrompt.math_input.format(**example), 'output': SFTPrompt.math_output.format(**example)}
+    return dataset.map(_preprocess_doc)
+
+def preprocess_commonsense(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {'input': example['instruction'], 'output': example['output']}
+    return dataset.map(_preprocess_doc)
+
+def preprocess_chip2(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {'input': example['text'].split('\n<bot>: ')[0].replace('<human>: ', ''), 'output': example['text'].split('\n<bot>: ')[1]}
+    return dataset.map(_preprocess_doc)
+
+def preprocess_selfinstruct(dataset: datasets.Dataset) -> datasets.Dataset:
+    for old, new in [["prompt", "input"], ["completion", "output"]]:
+        dataset = dataset.rename_column(old, new)
+    return dataset
+
+def preprocess_hhrlhf(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {'input': '', 'output': example['chosen']}
+    return dataset.map(_preprocess_doc)
+
+def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {'input': '', 'output': example['text']}
+    return dataset.map(_preprocess_doc)
+
+def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {'input': example['inputs'], 'output': example['targets']}
+    return dataset.map(_preprocess_doc)
+
 
 def local_dataset(dataset_name):
     if dataset_name.endswith('.json') or dataset_name.endswith('.jsonl'):
@@ -217,108 +274,80 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         - supernatural-instructions, 69624 examples (same as paper with 100 ex/task more can be used)
         - vicuna
     """
-    def load_data(dataset_name, data_path=None):
+    DATASETS_ARGS = {
+        'alpaca': ("tatsu-lab/alpaca", {}),
+        'alpaca-dummy': ("Lohse/alpaca-dummy", {}),
+        'alpaca-clean': ("yahma/alpaca-cleaned", {}),
+        'alpaca-gpt4': ("vicgalle/alpaca-gpt4", {}),
+        'flanv2': ("conceptofmind/FLAN_2022", {}),
+        'chip2': ("laion/OIG", {'data_files': 'unified_chip2.jsonl'}),
+        'self-instruct': ("yizhongw/self_instruct", {'name': 'self_instruct'}),
+        'hh-rlhf': ("Anthropic/hh-rlhf", {}),
+        'longform': ("akoksal/LongForm", {}),
+        'oasst1': ("timdettmers/openassistant-guanaco", {}),
+        'gsm8k': ("gsm8k", {'name': "main"}),
+        'hellaswag': ("Rowan/hellaswag", {}),
+        'wikitext2': ("wikitext", {'name': "wikitext-2-raw-v1"}),
+        'e2e': ("GEM/e2e_nlg", {}),
+        'math': ("Lohse/math", {}),
+        'commonsense': ("Lohse/commonsense", {}),
+    }
+
+    FORMAT_FUNCTIONS = {
+        'input-output': lambda x: x,
+        'alpaca': preprocess_alpaca,
+        'alpaca-clean': preprocess_alpaca,
+        'alpaca-gpt4': preprocess_alpaca,
+        'alpaca-dummy': preprocess_alpaca,
+        'gsm8k': preprocess_gsm8k,
+        'hellaswag': preprocess_hellaswag,
+        'chip2': preprocess_chip2,
+        'self-instruct': preprocess_selfinstruct,
+        'hh-rlhf': preprocess_hhrlhf,
+        'oasst1': preprocess_oasst1,
+        'wikitext2': preprocess_wikitext2,
+        'e2e': preprocess_e2e,
+        'math': preprocess_math,
+        'commonsense': preprocess_commonsense,
+    }
+
+    def load_data(dataset_name, local_data_path=None):
         """
         3 ways to load dataset:
-        (recommend) 1. load online (data_path is not given).
-        (recommend) 2. load offline from json. *Note that not all datasets are avaliable in local json.
-        3. directly load dataset when 'dataset_name' is exists.
+        (recommend) 1. load online (local_data_path is not given).
+        2. load offline from json. *Note that not all datasets are avaliable in local json.
+        3. directly load dataset when 'dataset_path/dataset_name' is exists.
         """
-        if data_path == None:
-            if dataset_name == 'alpaca':
-                return load_dataset("tatsu-lab/alpaca")
-            elif dataset_name == 'alpaca-dummy':
-                return load_dataset("Lohse/alpaca-dummy")
-            elif dataset_name == 'alpaca-clean':
-                return load_dataset("yahma/alpaca-cleaned")
-            elif dataset_name == 'flanv2':
-                return load_dataset("conceptofmind/FLAN_2022")
-            elif dataset_name == 'chip2':
-                return load_dataset("laion/OIG", data_files='unified_chip2.jsonl')
-            elif dataset_name == 'self-instruct':
-                return load_dataset("yizhongw/self_instruct", name='self_instruct')
-            elif dataset_name == 'hh-rlhf':
-                return load_dataset("Anthropic/hh-rlhf")
-            elif dataset_name == 'longform':
-                return load_dataset("akoksal/LongForm")
-            elif dataset_name == 'oasst1':
-                return load_dataset("timdettmers/openassistant-guanaco")
-            elif dataset_name == 'gsm8k':
-                return load_dataset("gsm8k","main")
-            elif dataset_name == 'hellaswag':
-                return load_dataset("Rowan/hellaswag")
-            elif dataset_name == 'wikitext2':
-                return load_dataset("wikitext", name="wikitext-2-raw-v1")
+        if dataset_name in DATASETS_ARGS:
+            dataset_info, kwargs = DATASETS_ARGS[dataset_name]
+            if local_data_path is None:
+                return load_dataset(dataset_info, **kwargs)
             else:
-                print_rank_0(f"The dataset {dataset_name} is not officially supported by llmtoolkit, use at your own risk.")
+                return load_dataset('json', data_dir=os.path.join(local_data_path, dataset_name), **kwargs)
         else:
-            if dataset_name in ['alpaca','alpaca-dummy','alpaca-clean','flanv2','hh-rlhf','longform','oasst1']:
-                return load_dataset('json', data_dir=os.path.join(data_path,dataset_name))
-            elif dataset_name == 'chip2':
-                return load_dataset('json', data_dir=os.path.join(data_path,dataset_name), data_files='unified_chip2.jsonl')
-            elif dataset_name == 'self-instruct':
-                return load_dataset('json', data_dir=os.path.join(data_path,dataset_name), name='self_instruct')
-            elif dataset_name == 'super-natural':
-                return load_dataset('json', data_dir=os.path.join(data_path,dataset_name))
+            print_rank_0(f"The dataset {dataset_name} is not supported by llmtoolkit, use at your own risk.")
+            dataset_path = os.path.join("" if local_data_path is None else local_data_path, dataset_name)
+            if os.path.exists(dataset_path):
+                try:
+                    args.dataset_format = args.dataset_format if args.dataset_format else "input-output"
+                    full_dataset = local_dataset(dataset_path)
+                    return full_dataset
+                except:
+                    raise ValueError(f"Error loading dataset '{dataset_name}' from {dataset_path}")
             else:
-                print_rank_0(f"The dataset {dataset_name} is not officially supported by llmtoolkit, use at your own risk.")
+                raise FileNotFoundError(f"Dataset '{dataset_name}' not found, the path {local_dataset_path} doesn't exist.")
 
-        if os.path.exists(dataset_name):
-            try:
-                args.dataset_format = args.dataset_format if args.dataset_format else "input-output"
-                full_dataset = local_dataset(dataset_name)
-                return full_dataset
-            except:
-                raise ValueError(f"Error loading dataset from '{dataset_name}'")
+    def format_dataset(dataset_name, dataset_format, dataset):
+        if dataset_name in FORMAT_FUNCTIONS:
+            dataset = FORMAT_FUNCTIONS[dataset_name](dataset)
+        elif dataset_format in FORMAT_FUNCTIONS:
+            dataset = FORMAT_FUNCTIONS[dataset_format](dataset)
         else:
-            raise NotImplementedError(f"Error loading dataset from '{dataset_name}', the path dosen't exist.")
-
-    def format_dataset(dataset, dataset_format):
-        if (dataset_format in ['alpaca','alpaca-clean','alpaca-dummy'] or (dataset_format is None and args.dataset in ['alpaca', 'alpaca-clean', 'alpaca-dummy'])):
-            dataset = dataset.map(preprocess_alpaca)
-        elif (dataset_format in ['gsm8k'] or (dataset_format is None and args.dataset in ['gsm8k'])):
-            dataset = dataset.map(preprocess_gsm8k)
-        elif (dataset_format in ['hellaswag'] or (dataset_format is None and args.dataset in ['hellaswag'])):
-            dataset = preprocess_hellaswag(dataset)
-        elif dataset_format == 'chip2' or (dataset_format is None and args.dataset == 'chip2'):
-            dataset = dataset.map(
-                lambda x: {
-                'input': x['text'].split('\n<bot>: ')[0].replace('<human>: ', ''),
-                'output': x['text'].split('\n<bot>: ')[1],
-                })
-        elif dataset_format == 'self-instruct' or (dataset_format is None and args.dataset == 'self-instruct'):
-            for old, new in [["prompt", "input"], ["completion", "output"]]:
-                dataset = dataset.rename_column(old, new)
-        elif dataset_format == 'hh-rlhf' or (dataset_format is None and args.dataset == 'hh-rlhf'):
-            dataset = dataset.map(lambda x: {
-                'input': '',
-                'output': x['chosen']
-            })
-        elif dataset_format == 'oasst1' or (dataset_format is None and args.dataset == 'oasst1'):
-            dataset = dataset.map(lambda x: {
-                'input': '',
-                'output': x['text'],
-            })
-        elif dataset_format == 'flanv2' or (dataset_format is None and args.dataset == 'flanv2'):
-            dataset = dataset.map(lambda x: {'input': x['inputs'],'output': x['targets'],})
-        elif dataset_format =='super-natural' or (dataset_format is None and args.dataset == 'super-natural'):
-            dataset = dataset.map(remove_columns=['id'])
-            # dataset = extract_super_natural_instructions_data(dataset)
-            # dataset = Dataset.from_dict(dataset)
-        elif (dataset_format in ['wikitext2'] or (dataset_format is None and args.dataset in ['wikitext2'])):
-            dataset = dataset.map(preprocess_wikitext2)
-        elif dataset_format == 'input-output':
-            # leave as is
-            pass
-        # Remove unused columns.
-        # dataset = dataset.remove_columns(
-        #     [col for col in dataset.column_names['train'] if col not in ['input', 'output']]
-        # )
-        # print(dataset)
+            raise NotImplementedError(f"Dataset '{dataset_name}' or dataset format '{dataset_format}' is not supported.")
         return dataset
 
-    dataset = load_data(args.dataset, args.data_path)
-    dataset = format_dataset(dataset, args.dataset_format)
+    dataset = load_data(args.dataset, args.local_data_path)
+    dataset = format_dataset(args.dataset, args.dataset_format, dataset)
 
     if args.do_eval or args.do_predict:
         if 'eval' in dataset:

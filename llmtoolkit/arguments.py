@@ -21,9 +21,9 @@ class ModelArguments:
         default=False,
         metadata={"help": "use lora? default = false"},
     )
-    fa: bool = field(
-        default=False,
-        metadata={"help": "use LoRA-FA? default = false"},
+    peft: Optional[str] = field(
+        default=None,
+        metadata={"help": "To use peft, choose from [lora|lora-fa|vera]"}
     )
     lora_r: int = field(
         default=1,
@@ -37,11 +37,11 @@ class ModelArguments:
         default=0.0,
         metadata={"help":"Lora dropout."}
     )
-    percent: Optional[float] = field(
+    lora_percent: Optional[float] = field(
         default=1.0,
         metadata={"help": "Lora layers percentage from 0-1. Default is 1.0, i.e., 100% lora layers will be applied. *FOR TEST ONLY DO NOT USE*"}
     )
-    init_method: Optional[str] = field(
+    lora_init_method: Optional[str] = field(
         default="kaiming_uniform_",
         metadata={"help": "The method to init LoRA_A. Choose from [ones_, normal_, kaiming_uniform_]. *FOR TEST ONLY DO NOT USE*"}
     )
@@ -57,7 +57,22 @@ class ModelArguments:
         default=False,
         metadata={"help": "Only finetune embedding"},
     )
-
+    quant: bool = field(
+        default=False,
+        metadata={"help": "Quantize base model into quant_type data format. Default False"}
+    )
+    double_quant: bool = field(
+        default=False,
+        metadata={"help": "Compress the quantization statistics through double quantization."}
+    )
+    quant_type: str = field(
+        default="nf4",
+        metadata={"help": "Quantization data type to use. Should be one of `fp4` or `nf4`."}
+    )
+    bits: int = field(
+        default=16,
+        metadata={"help": "How many bits to use. In general we use bf16 training, here the bits is 16."}
+    )
 @dataclass
 class DataArguments:
     eval_dataset_size: int = field(
@@ -97,7 +112,7 @@ class DataArguments:
         default=None,
         metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf|super-natural]"}
     )
-    data_path: str = field(
+    local_data_path: str = field(
         default=None,
         metadata={"help": "Where to find the dataset, download from huggingface if set to None."}
     )
@@ -113,27 +128,11 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     train_on_source: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to train on the input in addition to the target text."}
+        metadata={"help": "Whether to train on the input in addition to the target text. **Mostly used in pretraining."}
     )
     adam8bit: bool = field(
         default=False,
         metadata={"help": "Use 8-bit adam."}
-    )
-    quant: bool = field(
-        default=False,
-        metadata={"help": "Whether quant fine-tuning or not. Default False"}
-    )
-    double_quant: bool = field(
-        default=False,
-        metadata={"help": "Compress the quantization statistics through double quantization."}
-    )
-    quant_type: str = field(
-        default="nf4",
-        metadata={"help": "Quantization data type to use. Should be one of `fp4` or `nf4`."}
-    )
-    bits: int = field(
-        default=16,
-        metadata={"help": "How many bits to use."}
     )
     max_memory_MB: int = field(
         default=40000,
@@ -145,14 +144,18 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     clean_cache: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to clean the cache when training. *FOR TEST ONLY DO NOT USE*"}
+        metadata={"help": "Whether to clean the cache when training. *DEBUG ONLY - DO NOT USE*"}
     )
-    output_dir: str = field(default='output', metadata={"help": 'The output dir for logs and checkpoints'})
+    run_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "An optional descriptor for the run. Notably used for wandb logging."}
+    )
+    output_dir: str = field(default='default_output', metadata={"help": 'The output dir for logs and checkpoints'})
     optim: str = field(default='adamw_hf', metadata={"help": 'The optimizer to be used'})
     per_device_train_batch_size: int = field(default=1, metadata={"help": 'The training batch size per GPU. Increase for better speed.'})
     auto_find_batch_size: bool = field(default=False, metadata={"help": 'Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (`pip install accelerate`)'})
     gradient_accumulation_steps: int = field(default=1, metadata={"help": 'How many gradients to accumulate before to perform an optimizer step'})
-    max_steps: int = field(default=-1, metadata={"help": 'How many optimizer update steps to take'})
+    max_steps: int = field(default=-1, metadata={"help": 'How many optimizer update steps to take. Works only when max_steps > 0.'})
     weight_decay: float = field(default=0.0, metadata={"help": 'The L2 weight decay rate of AdamW'})
     learning_rate: float = field(default=0.0002, metadata={"help": 'The learnign rate'})
     remove_unused_columns: bool = field(default=False, metadata={"help": 'Removed unused columns. Needed to make this codebase work.'})
@@ -165,9 +168,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     group_by_length: bool = field(default=True, metadata={"help": 'Group sequences into batches with same length. Saves memory and speeds up training considerably.'})
     save_strategy: str = field(default='steps', metadata={"help": 'When to save checkpoints'})
     save_steps: int = field(default=250, metadata={"help": 'How often to save a model'})
-    save_total_limit: int = field(default=99, metadata={"help": 'How many checkpoints to save before the oldest is overwritten'})
+    save_total_limit: int = field(default=10, metadata={"help": 'How many checkpoints to save before the oldest is overwritten'})
     profiler: str = field(default=None, metadata={"help": 'To profile or not to profile, that is the question?'})
     profiler_warmup_step: int = field(default=30, metadata={"help": 'profiler_warmup_step. Default = 30 steps.'})
+    profiler_step_log: bool = field(default=False, metadata={"help": 'Profile with detailed log (every step): train/eval loss, etc. Default = False'})
 
 
 @dataclass

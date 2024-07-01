@@ -1,3 +1,0 @@
-import llmtoolkit
-
-llmtoolkit.AutoConfig()

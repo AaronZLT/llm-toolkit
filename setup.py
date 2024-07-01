@@ -25,6 +25,7 @@ _deps = [
 'scikit-learn',
 'matplotlib',
 'lm-eval',
+'wandb',
 ]
 
 deps = {b: a for a, b in (re.findall(r"^(([^!=<>~ ]+)(?:[!=<>~ ].*)?$)", x)[0] for x in _deps)}
@@ -49,6 +50,7 @@ install_requires = [
     deps["scikit-learn"],
     deps["matplotlib"],
     deps["lm-eval"],
+    deps["wandb"],
 ]
 
 setuptools.setup(
