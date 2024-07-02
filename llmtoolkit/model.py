@@ -179,19 +179,20 @@ def get_accelerate_model(args, checkpoint_dir):
     #     use_auth_token=args.use_auth_token,
     # )
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    tokenizer.padding_side = 'left'
 
-    # add special tokens, 2 steps
-    # 1. add pad_token, as universial "<[PAD]>"
-    # 2. add eos_token, bos_token, unk_token based on model config.json, if and only if the tokenizer is llama tokenizer.
+    # add special tokens
+    # 1. add pad_token if pad_token is None, as unk_token or eos_token if unk_token is None
+    # 2. add unk_token if unk_token is None, as pad_token or eos_token if pad_token is None
     special_tokens_dict = dict()
     if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+        special_tokens_dict["pad_token"] = tokenizer.unk_token if tokenizer.unk_token is not None else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
     if tokenizer.eos_token is None:
         special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
     if tokenizer.bos_token is None:
         special_tokens_dict["bos_token"] = tokenizer.convert_ids_to_tokens(model.config.bos_token_id)
     if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = special_tokens_dict["pad_token"]
+        special_tokens_dict["unk_token"] = tokenizer.pad_token if tokenizer.pad_token is not None else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
 
     smart_tokenizer_and_embedding_resize(special_tokens_dict, tokenizer, model)
     print_rank_0(f"pad_token: {tokenizer.pad_token}")
