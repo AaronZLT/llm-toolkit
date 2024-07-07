@@ -45,9 +45,7 @@ from .utils import (
 )
 
 def train():    
-    hfparser = transformers.HfArgumentParser((
-        ModelArguments, DataArguments, TrainingArguments, GenerationArguments
-    ))
+    hfparser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments, GenerationArguments))
     model_args, data_args, training_args, generation_args, extra_args = hfparser.parse_args_into_dataclasses(return_remaining_strings=True)
     training_args.generation_config = transformers.GenerationConfig(**vars(generation_args))
     args = argparse.Namespace(
@@ -121,9 +119,10 @@ def train():
         train_result = trainer.train()
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)
-        trainer.save_metrics("train", metrics)
-        trainer.save_state()
-        trainer.save_model()
+        if args.save_strategy is transformers.IntervalStrategy.STEPS or args.save_strategy is transformers.IntervalStrategy.EPOCH:
+            trainer.save_metrics("train", metrics)
+            trainer.save_state()
+            trainer.save_model()
         all_metrics.update(metrics)
     if args.do_eval:
         print_rank_0("*** Evaluate ***")

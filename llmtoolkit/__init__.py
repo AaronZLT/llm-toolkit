@@ -20,7 +20,7 @@ from .dataset import (
 from .evaluate import (
     simple_eval,
 )
-from .flashattn import (
+from .llama2_flashattn import (
     replace_llama_attn_with_flash_attn,
 )
 from .model import (

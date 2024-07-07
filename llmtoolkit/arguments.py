@@ -17,6 +17,7 @@ class ModelArguments:
         default=False,
         metadata={"help": "Enables using Huggingface auth token from Git Credentials."}
     )
+    # use_lora deprecated
     use_lora: bool = field(
         default=False,
         metadata={"help": "use lora? default = false"},
@@ -102,7 +103,7 @@ class DataArguments:
     )
     hard_padding: bool = field(
         default=False,
-        metadata={"help": "Force pad the length of input_ids (sequence length) to: source_max_len+target_max_len. Default = False"},
+        metadata={"help": "Force pad the length of input_ids (sequence length) to: source_max_len+target_max_len. Set this to True may impact throughput. Default = False"},
     )
     dataset: str = field(
         default='alpaca',
@@ -114,11 +115,11 @@ class DataArguments:
     )
     local_data_path: str = field(
         default=None,
-        metadata={"help": "Where to find the dataset, download from huggingface if set to None."}
+        metadata={"help": "Where to find the dataset locally, otherwise it will download from huggingface if set to None."}
     )
     metrics_path: Optional[str] = field(
         default=None,
-        metadata={"help": "Where to find the metrics, download from huggingface if set to None."}
+        metadata={"help": "Where to find the metrics locally, otherwise it will download from huggingface if set to None."}
     )
 
 @dataclass
@@ -136,7 +137,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     max_memory_MB: int = field(
         default=40000,
-        metadata={"help": "Free memory per gpu."}
+        metadata={"help": "Free memory per gpu. E.g., for H100 this should be set to 80000."}
     )
     report_to: str = field(
         default='none',

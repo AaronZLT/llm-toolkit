@@ -130,8 +130,10 @@ def get_unique_key(args):
     lr_sche = args.lr_scheduler_type
     
     # peft
-    peft = "-" if not args.peft else args.peft
-    peft_config = "-" if not peft else f"r{args.lora_r}-a{int(args.lora_alpha)}-dropout{args.lora_dropout}-percent{args.lora_percent}-module{args.lora_modules}"
+    if args.peft:
+        peft = f"{args.peft}-r{args.lora_r}-a{int(args.lora_alpha)}-dropout{args.lora_dropout}-percent{args.lora_percent}-module{args.lora_modules}"
+    else:
+        peft = "-"
 
     # flash attention
     flash = "flash" if args.flash_attn else "-"
@@ -151,7 +153,7 @@ def get_unique_key(args):
     # offload
     offload = "-" if not args.deepspeed else "off" if 'off' in args.deepspeed else "-"
 
-    key = f"{model}-dataset_{dataset}-gpus{gpu_number}-bs{bs}-seq{seq}-lr{lr}-{lr_sche}-{peft}-{peft_config}-{flash}-{recomputation}-{quant}-{datatype}-{zero}-{offload}"
+    key = f"{model}-dataset_{dataset}-gpus{gpu_number}-bs{bs}-seq{seq}-lr{lr}-{lr_sche}-{peft}-{flash}-{recomputation}-{quant}-{datatype}-{zero}-{offload}"
 
     return key
 

@@ -50,12 +50,15 @@ class PT_ProfCallback(transformers.TrainerCallback):
         self.warmup_step = warmup_step
         self.key = key
         self.output_dir = output_dir
-
-    def on_train_begin(self, args, state, control, **kwargs):
-        self.prof.start()
+        
+    def on_step_begin(self, args, state, control, **kwargs):
+        # To fix the bug with auto_find_batch_size=True
+        if state.global_step == 1:
+            self.prof.start()
 
     def on_step_end(self, args, state, control, **kwargs):
-        self.prof.step()
+        if state.global_step >= 1:
+            self.prof.step()
 
     def on_train_end(self, args, state, control, **kwargs):
         self.prof.stop()
