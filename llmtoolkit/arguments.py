@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import torch
 import transformers
 
+
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(
@@ -11,20 +12,18 @@ class ModelArguments:
     )
     trust_remote_code: Optional[bool] = field(
         default=False,
-        metadata={"help": "Enable unpickling of arbitrary code in AutoModelForCausalLM#from_pretrained."}
+        metadata={
+            "help": "Enable unpickling of arbitrary code in AutoModelForCausalLM#from_pretrained."}
     )
     use_auth_token: Optional[bool] = field(
         default=False,
-        metadata={"help": "Enables using Huggingface auth token from Git Credentials."}
-    )
-    # use_lora deprecated
-    use_lora: bool = field(
-        default=False,
-        metadata={"help": "use lora? default = false"},
+        metadata={
+            "help": "Enables using Huggingface auth token from Git Credentials."}
     )
     peft: Optional[str] = field(
         default=None,
-        metadata={"help": "To use peft, choose from [lora|lora-fa|vera]"}
+        metadata={
+            "help": "To use peft, choose from [lora|lora-fa|vera|dora|prompt|embedding]"}
     )
     lora_r: int = field(
         default=1,
@@ -36,7 +35,7 @@ class ModelArguments:
     )
     lora_dropout: float = field(
         default=0.0,
-        metadata={"help":"Lora dropout."}
+        metadata={"help": "Lora dropout."}
     )
     lora_percent: Optional[float] = field(
         default=1.0,
@@ -44,36 +43,40 @@ class ModelArguments:
     )
     lora_init_method: Optional[str] = field(
         default="kaiming_uniform_",
-        metadata={"help": "The method to init LoRA_A. Choose from [ones_, normal_, kaiming_uniform_]. *FOR TEST ONLY DO NOT USE*"}
+        metadata={
+            "help": "The method to init LoRA_A. Choose from [ones_, normal_, kaiming_uniform_]. *FOR TEST ONLY DO NOT USE*"}
     )
     lora_modules: Optional[str] = field(
         default="all",
-        metadata={"help": "Where to apply lora_modules. 1. [all|attention|mlp] - apply lora to [all|attention|mlp] linear layers. 2. module1,module2 - apply lora only to module 1 and moudule 2; moudles must be separated by ','."}
+        metadata={
+            "help": "Where to apply lora_modules. 1. [all|attention|mlp] - apply lora to [all|attention|mlp] linear layers. 2. module1,module2 - apply lora only to module 1 and moudule 2; moudles must be separated by ','."}
     )
     flash_attn: bool = field(
         default=False,
         metadata={"help": "Use flash attention? default = False"},
     )
-    only_embedding: bool = field(
-        default=False,
-        metadata={"help": "Only finetune embedding"},
-    )
     quant: bool = field(
         default=False,
-        metadata={"help": "Quantize base model into quant_type data format. Default False"}
+        metadata={
+            "help": "Quantize base model into quant_type data format. Default False"}
     )
     double_quant: bool = field(
         default=False,
-        metadata={"help": "Compress the quantization statistics through double quantization."}
+        metadata={
+            "help": "Compress the quantization statistics through double quantization."}
     )
     quant_type: str = field(
         default="nf4",
-        metadata={"help": "Quantization data type to use. Should be one of `fp4` or `nf4`."}
+        metadata={
+            "help": "Quantization data type to use. Should be one of `fp4` or `nf4`."}
     )
     bits: int = field(
         default=16,
-        metadata={"help": "How many bits to use. In general we use bf16 training, here the bits is 16."}
+        metadata={
+            "help": "How many bits to use. In general we use bf16 training, here the bits is 16."}
     )
+
+
 @dataclass
 class DataArguments:
     eval_dataset_size: int = field(
@@ -95,32 +98,40 @@ class DataArguments:
     )
     source_max_len: int = field(
         default=1024,
-        metadata={"help": "Maximum source sequence length. Sequences will be right padded (and possibly truncated)."},
+        metadata={
+            "help": "Maximum source sequence length. Sequences will be right padded (and possibly truncated)."},
     )
     target_max_len: int = field(
         default=1024,
-        metadata={"help": "Maximum target sequence length. Sequences will be right padded (and possibly truncated)."},
+        metadata={
+            "help": "Maximum target sequence length. Sequences will be right padded (and possibly truncated)."},
     )
     hard_padding: bool = field(
         default=False,
-        metadata={"help": "Force pad the length of input_ids (sequence length) to: source_max_len+target_max_len. Set this to True may impact throughput. Default = False"},
+        metadata={
+            "help": "Force pad the length of input_ids (sequence length) to: source_max_len + target_max_len. Set this to True may impact throughput, but is recommend in benchmark. Default = False."},
     )
     dataset: str = field(
         default='alpaca',
-        metadata={"help": "Which dataset to finetune on. See datamodule for options."}
+        metadata={
+            "help": "Which dataset to finetune on. See datamodule for options."}
     )
     dataset_format: Optional[str] = field(
         default=None,
-        metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf|super-natural]"}
+        metadata={
+            "help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf|super-natural]"}
     )
     local_data_path: str = field(
         default=None,
-        metadata={"help": "Where to find the dataset locally, otherwise it will download from huggingface if set to None."}
+        metadata={
+            "help": "Where to find the dataset locally, otherwise it will download from huggingface if set to None."}
     )
     metrics_path: Optional[str] = field(
         default=None,
-        metadata={"help": "Where to find the metrics locally, otherwise it will download from huggingface if set to None."}
+        metadata={
+            "help": "Where to find the metrics locally, otherwise it will download from huggingface if set to None."}
     )
+
 
 @dataclass
 class TrainingArguments(transformers.Seq2SeqTrainingArguments):
@@ -129,7 +140,8 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     train_on_source: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to train on the input in addition to the target text. **Mostly used in pretraining."}
+        metadata={
+            "help": "Whether to train on the input in addition to the target text. **Mostly used in pretraining."}
     )
     adam8bit: bool = field(
         default=False,
@@ -137,7 +149,8 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     max_memory_MB: int = field(
         default=40000,
-        metadata={"help": "Free memory per gpu. E.g., for H100 this should be set to 80000."}
+        metadata={
+            "help": "Free memory per gpu. E.g., for H100 this should be set to 80000."}
     )
     report_to: str = field(
         default='none',
@@ -145,34 +158,62 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     clean_cache: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to clean the cache when training. *DEBUG ONLY - DO NOT USE*"}
+        metadata={
+            "help": "Whether to clean the cache when training. *DEBUG ONLY - DO NOT USE*"}
     )
     run_name: Optional[str] = field(
         default=None,
-        metadata={"help": "An optional descriptor for the run. Notably used for wandb logging."}
+        metadata={
+            "help": "An optional descriptor for the run. Notably used for wandb logging."}
     )
-    output_dir: str = field(default='default_output', metadata={"help": 'The output dir for logs and checkpoints'})
-    optim: str = field(default='adamw_hf', metadata={"help": 'The optimizer to be used'})
-    per_device_train_batch_size: int = field(default=1, metadata={"help": 'The training batch size per GPU. Increase for better speed.'})
-    auto_find_batch_size: bool = field(default=False, metadata={"help": 'Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (`pip install accelerate`)'})
-    gradient_accumulation_steps: int = field(default=1, metadata={"help": 'How many gradients to accumulate before to perform an optimizer step'})
-    max_steps: int = field(default=-1, metadata={"help": 'How many optimizer update steps to take. Works only when max_steps > 0.'})
-    weight_decay: float = field(default=0.0, metadata={"help": 'The L2 weight decay rate of AdamW'})
-    learning_rate: float = field(default=0.0002, metadata={"help": 'The learnign rate'})
-    remove_unused_columns: bool = field(default=False, metadata={"help": 'Removed unused columns. Needed to make this codebase work.'})
-    max_grad_norm: float = field(default=0.3, metadata={"help": 'Gradient clipping max norm. This is tuned and works well for all models tested.'})
-    gradient_checkpointing: bool = field(default=False, metadata={"help": 'Use gradient checkpointing. You want to use this.'})
-    do_train: bool = field(default=True, metadata={"help": 'To train or not to train, that is the question?'})
-    lr_scheduler_type: str = field(default='linear', metadata={"help": 'Learning rate schedule. Constant a bit better than cosine, and has advantage for analysis. Linear is better tuning the loss.'})
-    warmup_ratio: float = field(default=0.03, metadata={"help": 'Fraction of steps to do a warmup for'})
-    logging_steps: int = field(default=10, metadata={"help": 'The frequency of update steps after which to log the loss'})
-    group_by_length: bool = field(default=True, metadata={"help": 'Group sequences into batches with same length. Saves memory and speeds up training considerably.'})
-    save_strategy: str = field(default='steps', metadata={"help": 'When to save checkpoints'})
-    save_steps: int = field(default=250, metadata={"help": 'How often to save a model'})
-    save_total_limit: int = field(default=10, metadata={"help": 'How many checkpoints to save before the oldest is overwritten'})
-    profiler: str = field(default=None, metadata={"help": 'To profile or not to profile, that is the question?'})
-    profiler_warmup_step: int = field(default=30, metadata={"help": 'profiler_warmup_step. Default = 30 steps.'})
-    profiler_step_log: bool = field(default=False, metadata={"help": 'Profile with detailed log (every step): train/eval loss, etc. Default = False'})
+    output_dir: str = field(default='default_output', metadata={
+                            "help": 'The output dir for logs and checkpoints'})
+    optim: str = field(default='adamw_hf', metadata={
+                       "help": 'The optimizer to be used'})
+    per_device_train_batch_size: int = field(default=1, metadata={
+                                             "help": 'The training batch size per GPU. Increase for better speed.'})
+    auto_find_batch_size: bool = field(default=False, metadata={
+                                       "help": 'Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (`pip install accelerate`)'})
+    gradient_accumulation_steps: int = field(default=1, metadata={
+                                             "help": 'How many gradients to accumulate before to perform an optimizer step'})
+    max_steps: int = field(
+        default=-1, metadata={"help": 'How many optimizer update steps to take. Works only when max_steps > 0.'})
+    weight_decay: float = field(default=0.0, metadata={
+                                "help": 'The L2 weight decay rate of AdamW'})
+    learning_rate: float = field(default=0.0002, metadata={
+                                 "help": 'The learnign rate'})
+    remove_unused_columns: bool = field(default=False, metadata={
+                                        "help": 'Removed unused columns. Needed to make this codebase work.'})
+    max_grad_norm: float = field(default=0.3, metadata={
+                                 "help": 'Gradient clipping max norm. This is tuned and works well for all models tested.'})
+    gradient_checkpointing: bool = field(default=False, metadata={
+                                         "help": 'Use gradient checkpointing. You want to use this.'})
+    do_train: bool = field(default=True, metadata={
+                           "help": 'To train or not to train, that is the question?'})
+    lr_scheduler_type: str = field(default='linear', metadata={
+                                   "help": 'Learning rate schedule. Constant a bit better than cosine, and has advantage for analysis. Linear is better tuning the loss.'})
+    warmup_ratio: float = field(default=0.03, metadata={
+                                "help": 'Fraction of steps to do a warmup for'})
+    logging_steps: int = field(default=10, metadata={
+                               "help": 'The frequency of update steps after which to log the loss'})
+    group_by_length: bool = field(default=True, metadata={
+                                  "help": 'Group sequences into batches with same length. Saves memory and speeds up training considerably.'})
+    save_strategy: str = field(default='steps', metadata={
+                               "help": 'When to save checkpoints'})
+    save_steps: int = field(default=250, metadata={
+                            "help": 'How often to save a model'})
+    save_total_limit: int = field(default=10, metadata={
+                                  "help": 'How many checkpoints to save before the oldest is overwritten'})
+    profiler: str = field(default=None, metadata={
+                          "help": 'To profile or not to profile, that is the question?'})
+    profiler_warmup_step: int = field(
+        default=30, metadata={"help": 'profiler_warmup_step. Default = 30 steps.'})
+    profiler_step_log: bool = field(default=False, metadata={
+                                    "help": 'Profile with detailed log (every step): train/eval loss, etc. Default = False'})
+    debug_mode: bool = field(
+        default=False,
+        metadata={"help": "Turn on debug mode."}
+    )
 
 
 @dataclass
@@ -185,7 +226,7 @@ class GenerationArguments:
         metadata={"help": "Maximum number of new tokens to be generated in evaluation or prediction loops"
                           "if predict_with_generate is set."}
     )
-    min_new_tokens : Optional[int] = field(
+    min_new_tokens: Optional[int] = field(
         default=None,
         metadata={"help": "Minimum number of new tokens to generate."}
     )

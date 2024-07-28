@@ -44,31 +44,38 @@ from .utils import (
     clear_torch_cache,
 )
 
-def train():    
-    hfparser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments, GenerationArguments))
-    model_args, data_args, training_args, generation_args, extra_args = hfparser.parse_args_into_dataclasses(return_remaining_strings=True)
-    training_args.generation_config = transformers.GenerationConfig(**vars(generation_args))
+
+def train():
+    hfparser = transformers.HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments, GenerationArguments))
+    model_args, data_args, training_args, generation_args, extra_args = hfparser.parse_args_into_dataclasses(
+        return_remaining_strings=True)
+    training_args.generation_config = transformers.GenerationConfig(
+        **vars(generation_args))
     args = argparse.Namespace(
         **vars(model_args), **vars(data_args), **vars(training_args)
     )
 
     # run_name is post inited in Transformers: if self.run_name is None: self.run_name = self.output_dir
     if args.run_name == args.output_dir:
-        print_rank_0(f"Set run_name from '{args.output_dir}' to '{get_unique_key(args)}'")
+        print_rank_0(
+            f"Set run_name from '{args.output_dir}' to '{get_unique_key(args)}'")
         args.run_name = get_unique_key(args)
         training_args.run_name = get_unique_key(args)
-        
+
     if args.output_dir == "default_output":
-        print_rank_0(f"Set output_dir from 'default_output' to '{get_unique_key(args)}'")
+        print_rank_0(
+            f"Set output_dir from 'default_output' to '{get_unique_key(args)}'")
         args.output_dir = get_unique_key(args)
         training_args.output_dir = get_unique_key(args)
 
     print_rank_0(args)
     set_seed(args.seed)
+    # no jit CPUAdamBuilder since it is too slow or may break the training process
     # deepspeed.ops.op_builder.CPUAdamBuilder().load()
     hardware = hardware_info()
     n_gpus = hardware.n_gpus
-    
+
     checkpoint_dir, completed_training = get_last_checkpoint(args.output_dir)
     if completed_training:
         print_rank_0('Detected that training was already completed!')
@@ -78,41 +85,40 @@ def train():
     print_rank_0('model loaded')
     print_rank_0(model)
 
+    trainable_param, all_param, trainable_rate = print_trainable_parameters(
+        model, args.debug_mode)
+
     data_module = make_data_module(tokenizer=tokenizer, args=args)
-    
+
     trainer = Seq2SeqTrainer_llmtoolkit(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        **{k:v for k,v in data_module.items() if k != 'predict_dataset'},
+        **{k: v for k, v in data_module.items() if k != 'predict_dataset'},
     )
-    
+
     try:
         print_rank_0(f"Premade device map: {model.hf_device_map}")
     except:
         print_rank_0("No hf_device_map has been set.")
 
     # Callbacks
-    if args.use_lora:
-        pass
-        # trainer.add_callback(SavePeftModelCallback)
-        
     if args.clean_cache:
         trainer.add_callback(EmptycacheCallback)
-        
-    trainer.add_callback(StepInfoCallback(trainer=trainer, warmup_step=args.profiler_warmup_step, key=get_unique_key(args), step_log = args.profiler_step_log, output_dir=args.output_dir))
 
-    if args.profiler=="deepspeed":
+    trainer.add_callback(StepInfoCallback(trainer=trainer, warmup_step=args.profiler_warmup_step, key=get_unique_key(
+        args), trainable_param=trainable_param, step_log=args.profiler_step_log, output_dir=args.output_dir))
+
+    if args.profiler == "deepspeed":
         return NotImplementedError("deepspeed is not supported")
-    if args.profiler=="pytorch":
-        trainer.add_callback(PT_ProfCallback(warmup_step=args.profiler_warmup_step, key=get_unique_key(args),output_dir=args.output_dir))
-    
+    if args.profiler == "pytorch":
+        trainer.add_callback(PT_ProfCallback(
+            warmup_step=args.profiler_warmup_step, key=get_unique_key(args), output_dir=args.output_dir))
+
     trainer.add_callback(EvalCallback())
-    
-    print_trainable_parameters(model)
 
     all_metrics = {"run_name": args.run_name}
-    
+
     print_rank_0("========START TRAIN========\n")
     if args.do_train:
         print_rank_0("*** Train ***")
@@ -132,17 +138,20 @@ def train():
         all_metrics.update(metrics)
     if args.do_predict:
         print_rank_0("*** Predict ***")
-        prediction_output = trainer.predict(test_dataset=data_module['predict_dataset'],metric_key_prefix="predict")
+        prediction_output = trainer.predict(
+            test_dataset=data_module['predict_dataset'], metric_key_prefix="predict")
         prediction_metrics = prediction_output.metrics
         predictions = prediction_output.predictions
-        predictions = np.where(predictions != -100, predictions, tokenizer.pad_token_id)
+        predictions = np.where(predictions != -100,
+                               predictions, tokenizer.pad_token_id)
         predictions = tokenizer.batch_decode(
             predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True
         )
         with open(os.path.join(args.output_dir, 'predictions.jsonl'), 'w') as fout:
             for i, example in enumerate(data_module['predict_dataset']):
                 example['prediction_with_input'] = predictions[i].strip()
-                example['prediction'] = predictions[i].replace(example['input'], '').strip()
+                example['prediction'] = predictions[i].replace(
+                    example['input'], '').strip()
                 fout.write(json.dumps(example) + '\n')
         print_rank_0(prediction_metrics)
         trainer.log_metrics("predict", prediction_metrics)
@@ -152,4 +161,3 @@ def train():
     if (args.do_train or args.do_eval or args.do_predict):
         with open(os.path.join(args.output_dir, "metrics.json"), "w") as fout:
             fout.write(json.dumps(all_metrics))
-    

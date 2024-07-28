@@ -17,6 +17,7 @@ from transformers.models.llama.modeling_llama import (
     rotate_half,
 )
 
+
 def apply_rotary_pos_emb(q, k, cos_sin, position_ids):
     gather_indices = position_ids[:, :, None, None]  # [bsz, seq_len, 1, 1]
     gather_indices = gather_indices.repeat(
@@ -29,6 +30,7 @@ def apply_rotary_pos_emb(q, k, cos_sin, position_ids):
     )
     q, k = ((x * cos) + (rotate_half(x) * sin) for x in (q, k))
     return q, k
+
 
 def forward(
     self,
@@ -128,6 +130,8 @@ def forward(
 
 # Disable the transformation of the attention mask in LlamaModel as flash attention
 # takes a boolean key_padding_mask. Fills in the past kv length for use in forward.
+
+
 def _prepare_decoder_attention_mask(
     self, attention_mask, input_shape, inputs_embeds, past_key_values_length
 ):
@@ -150,6 +154,7 @@ def _prepare_decoder_attention_mask(
         return None  # This uses the faster call when training with full samples
 
     return attention_mask
+
 
 def replace_llama_attn_with_flash_attn():
     cuda_major, cuda_minor = torch.cuda.get_device_capability()

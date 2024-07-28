@@ -77,14 +77,16 @@ def forward(
         k = torch.cat([past_key_value[0].transpose(1, 2), k], dim=1)
         v = torch.cat([past_key_value[1].transpose(1, 2), v], dim=1)
 
-    past_key_value = (k.transpose(1, 2), v.transpose(1, 2)) if use_cache else None
+    past_key_value = (k.transpose(1, 2), v.transpose(1, 2)
+                      ) if use_cache else None
 
     if attention_mask is None:
         output = flash_attn_func(q, k, v, 0.0, softmax_scale=None, causal=True).view(
             bsz, q_len, -1
         )
     else:
-        q, indices, cu_q_lens, max_s = unpad_input(q, attention_mask[:, -q_len:])
+        q, indices, cu_q_lens, max_s = unpad_input(
+            q, attention_mask[:, -q_len:])
         # We can skip concat and call unpad twice but seems better to call unpad only once.
         kv, _, cu_k_lens, max_k = unpad_input(
             torch.stack((k, v), dim=2), attention_mask
