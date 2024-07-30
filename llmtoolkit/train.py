@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 
 import torch
+from torch.profiler._memory_profiler import MemoryProfileTimeline
 import transformers
 from transformers import (
     set_seed,
@@ -43,6 +44,9 @@ from .utils import (
     hardware_info,
     clear_torch_cache,
 )
+from .memory_profiler import (
+    export_memory_timeline_html,
+)
 
 
 def train():
@@ -71,8 +75,10 @@ def train():
 
     print_rank_0(args)
     set_seed(args.seed)
+    
     # no jit CPUAdamBuilder since it is too slow or may break the training process
     # deepspeed.ops.op_builder.CPUAdamBuilder().load()
+    
     hardware = hardware_info()
     n_gpus = hardware.n_gpus
 
@@ -112,6 +118,7 @@ def train():
     if args.profiler == "deepspeed":
         return NotImplementedError("deepspeed is not supported")
     if args.profiler == "pytorch":
+        MemoryProfileTimeline.export_memory_timeline_html = export_memory_timeline_html
         trainer.add_callback(PT_ProfCallback(
             warmup_step=args.profiler_warmup_step, key=get_unique_key(args), output_dir=args.output_dir))
 
@@ -119,7 +126,6 @@ def train():
 
     all_metrics = {"run_name": args.run_name}
 
-    print_rank_0("========START TRAIN========\n")
     if args.do_train:
         print_rank_0("*** Train ***")
         train_result = trainer.train()

@@ -61,6 +61,10 @@ class PT_ProfCallback(transformers.TrainerCallback):
         # To fix the bug with auto_find_batch_size=True
         if state.global_step == 1:
             self.prof.start()
+        if state.global_step == self.warmup_step:
+            torch.cuda.memory._record_memory_history(
+                max_entries=100000,
+            )
 
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step >= 1:
@@ -69,6 +73,7 @@ class PT_ProfCallback(transformers.TrainerCallback):
     def on_train_end(self, args, state, control, **kwargs):
         self.prof.stop()
         self.dump_trace()
+        torch.cuda.memory._record_memory_history(enabled=None)
 
     @rank_0
     def dump_trace(self):
@@ -76,6 +81,8 @@ class PT_ProfCallback(transformers.TrainerCallback):
             self.output_dir, f"Trace_{self.key}_step_{self.warmup_step}_to_{self.prof.step_num}.json"))
         self.prof.export_memory_timeline(os.path.join(
             self.output_dir, f"Trace_{self.key}_step_{self.warmup_step}_to_{self.prof.step_num}.html"))
+        torch.cuda.memory._dump_snapshot(os.path.join(
+            self.output_dir, f"Trace_{self.key}_step_{self.warmup_step}_to_{self.prof.step_num}.pickle"))
 
 # todo: detailed step info
 

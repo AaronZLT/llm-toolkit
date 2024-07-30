@@ -23,6 +23,9 @@ from .evaluate import (
 from .llama2_flashattn import (
     replace_llama_attn_with_flash_attn,
 )
+from .memory_profiler import (
+    export_memory_timeline_html,
+)
 from .model import (
     get_accelerate_model,
     get_last_checkpoint,
