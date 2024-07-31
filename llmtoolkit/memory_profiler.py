@@ -43,11 +43,14 @@ def export_memory_timeline_html(
 
     print_rank_0("Processing memory trace, to find the memory overhead of each category, such as parameter, gradient, etc. The output is rounded to 3 decimals.")
     category_max_memory = {}
+    total_memory_overhead = 0
     for category, color in _CATEGORY_TO_COLORS.items():
         i = _CATEGORY_TO_INDEX[category]
         max_value = round(np.max(stacked[:, i + 1] - stacked[:, i]), 3)
         category_max_memory[category] = max_value
+        total_memory_overhead += max_value
         print_rank_0(f"Max memory for {category}: {max_value} GB")
+    print_rank_0(f"Total memory overhead: {total_memory_overhead} GB")
 
     # Plot memory timeline as stacked data
     fig = plt.figure(figsize=figsize, dpi=80)
@@ -57,7 +60,8 @@ def export_memory_timeline_html(
         axes.fill_between(
             times / 1e3, stacked[:, i], stacked[:, i + 1], color=color, alpha=0.7
         )
-    fig.legend([f"Unknown {category_max_memory[i]} GB" if i is None else f"{i.name} {category_max_memory[i]} GB" for i in _CATEGORY_TO_COLORS])
+    fig.legend(
+        [f"Unknown {category_max_memory[i]} GB" if i is None else f"{i.name} {category_max_memory[i]} GB" for i in _CATEGORY_TO_COLORS])
     # Usually training steps are in magnitude of ms.
     axes.set_xlabel("Time (ms)")
     axes.set_ylabel("Memory (GB)")
@@ -65,7 +69,8 @@ def export_memory_timeline_html(
         ([title] if title else [])
         + [
             f"Max memory allocated: {max_memory_allocated/(10**9):.2f} GB \n"
-            f"Max memory reserved: {max_memory_reserved/(10**9):.2f} GB"
+            f"Max memory reserved: {max_memory_reserved/(10**9):.2f} GB\n"
+            f"Total memory overhead: {total_memory_overhead:.3f} GB"
         ]
     )
     axes.set_title(title)
@@ -74,12 +79,13 @@ def export_memory_timeline_html(
     tmpfile = NamedTemporaryFile("wb", suffix=".png", delete=False)
     tmpfile.close()
     fig.savefig(tmpfile.name, format="png")
-    
+
     try:
-        fig.savefig(path.replace(".html",".png"))
+        fig.savefig(path.replace(".html", ".png"))
     except:
-        print_rank_0("Memory overhead cannot be saved into .png (path is unspecified)! HTML is not impacted.")
-    
+        print_rank_0(
+            "Memory overhead cannot be saved into .png (path is unspecified)! HTML is not impacted.")
+
     with open(tmpfile.name, "rb") as tmp:
         encoded = b64encode(tmp.read()).decode("utf-8")
         html = f"""<html>
