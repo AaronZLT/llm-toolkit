@@ -39,3 +39,17 @@ Modify LLM_BENCHMARK_PATH in the cmds.sh to the path to llm-toolkit, then:
 import llmtoolkit
 llmtoolkit.train()
 ```
+
+## Citation
+```bibtex
+@misc{zhang2023dissectingruntimeperformancetraining,
+      title={Dissecting the Runtime Performance of the Training, Fine-tuning, and Inference of Large Language Models}, 
+      author={Longteng Zhang and Xiang Liu and Zeyu Li and Xinglin Pan and Peijie Dong and Ruibo Fan and Rui Guo and Xin Wang and Qiong Luo and Shaohuai Shi and Xiaowen Chu},
+      year={2023},
+      eprint={2311.03687},
+      archivePrefix={arXiv},
+      primaryClass={cs.PF},
+      url={https://arxiv.org/abs/2311.03687}, 
+}
+```
+
