@@ -314,7 +314,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         'hh-rlhf': ("Anthropic/hh-rlhf", {}),
         'longform': ("akoksal/LongForm", {}),
         'oasst1': ("timdettmers/openassistant-guanaco", {}),
-        'gsm8k': ("gsm8k", {'name': "main"}),
+        'gsm8k': ("openai/gsm8k", {'name': "main"}),
         'hellaswag': ("Rowan/hellaswag", {}),
         'wikitext2': ("wikitext", {'name': "wikitext-2-raw-v1"}),
         'e2e': ("GEM/e2e_nlg", {}),

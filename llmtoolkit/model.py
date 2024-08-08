@@ -179,7 +179,7 @@ def get_accelerate_model(args, checkpoint_dir):
                 bnb_4bit_use_double_quant=args.double_quant,
                 bnb_4bit_quant_type=args.quant_type,
             ),
-            torch_dtype=(torch.float32 if args.fp16 else (
+            torch_dtype=(torch.float16 if args.fp16 else (
                 torch.bfloat16 if args.bf16 else torch.float32)),
             trust_remote_code=args.trust_remote_code,
             use_auth_token=args.use_auth_token
@@ -189,10 +189,8 @@ def get_accelerate_model(args, checkpoint_dir):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
             cache_dir=args.cache_dir,
-            load_in_4bit=args.bits == 4,
-            load_in_8bit=args.bits == 8,
             device_map=device_map,
-            torch_dtype=(torch.float32 if args.fp16 else (
+            torch_dtype=(torch.float16 if args.fp16 else (
                 torch.bfloat16 if args.bf16 else torch.float32)),
             trust_remote_code=args.trust_remote_code,
             use_auth_token=args.use_auth_token
@@ -212,7 +210,7 @@ def get_accelerate_model(args, checkpoint_dir):
     # setattr(model, 'model_parallel', True)
     # setattr(model, 'is_parallelizable', True)
 
-    model.config.torch_dtype = (torch.float32 if args.fp16 else (
+    model.config.torch_dtype = (torch.float16 if args.fp16 else (
         torch.bfloat16 if args.bf16 else torch.float32))
 
     # Tokenizer

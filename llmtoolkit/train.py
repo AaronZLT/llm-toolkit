@@ -12,7 +12,7 @@ from transformers import (
 )
 import accelerate
 from accelerate import Accelerator
-import deepspeed
+from accelerate.utils import DistributedType
 
 from .arguments import (
     ModelArguments,
@@ -72,6 +72,9 @@ def train():
             f"Set output_dir from 'default_output' to '{get_unique_key(args)}'")
         args.output_dir = get_unique_key(args)
         training_args.output_dir = get_unique_key(args)
+
+    if args.deepspeed:
+        training_args.distributed_state.distributed_type = DistributedType.DEEPSPEED
 
     print_rank_0(args)
     set_seed(args.seed)

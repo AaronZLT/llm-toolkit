@@ -57,14 +57,13 @@ class PT_ProfCallback(transformers.TrainerCallback):
         self.key = key
         self.output_dir = output_dir
 
+    def on_train_begin(self, args, state, control, **kwargs):
+        torch.cuda.memory._record_memory_history(max_entries=1048576)
+
     def on_step_begin(self, args, state, control, **kwargs):
         # To fix the bug with auto_find_batch_size=True
         if state.global_step == 1:
             self.prof.start()
-        if state.global_step == self.warmup_step:
-            torch.cuda.memory._record_memory_history(
-                max_entries=100000,
-            )
 
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step >= 1:
