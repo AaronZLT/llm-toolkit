@@ -34,6 +34,9 @@ from .model import (
 from .train import (
     train,
 )
+from .train_no_trainer import (
+    train_no_trainer,
+)
 from .trainer import (
     Seq2SeqTrainer_llmtoolkit,
 )
