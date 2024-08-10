@@ -51,5 +51,15 @@ llmtoolkit.train()
       primaryClass={cs.PF},
       url={https://arxiv.org/abs/2311.03687}, 
 }
+
+@misc{zhang2023lorafamemoryefficientlowrankadaptation,
+      title={LoRA-FA: Memory-efficient Low-rank Adaptation for Large Language Models Fine-tuning}, 
+      author={Longteng Zhang and Lin Zhang and Shaohuai Shi and Xiaowen Chu and Bo Li},
+      year={2023},
+      eprint={2308.03303},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2308.03303}, 
+}
 ```
 
