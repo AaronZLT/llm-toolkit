@@ -30,10 +30,6 @@ from .utils import (
 from .dataset import (
     DEFAULT_PAD_TOKEN,
 )
-from .llama2_flashattn import (
-    replace_llama_attn_with_flash_attn,
-)
-
 
 def find_all_linear_names(args, model):
     linear_cls = bnb.nn.Linear4bit if args.bits == 4 else (
@@ -135,6 +131,14 @@ def peft_model(args, model):
 
 def get_accelerate_model(args, checkpoint_dir):
     if args.flash_attn == True:
+        import importlib.util
+        flashattn_spec = importlib.util.find_spec("flash-attn")
+        if flashattn_spec is None:
+            raise FileNotFoundError("You can not use flash_attn now since flash-attn was not installed.")
+            
+        from .llama2_flashattn import (
+            replace_llama_attn_with_flash_attn,
+        )
         print_rank_0("Use FLASH ATTENTION! Replacing......")
         replace_llama_attn_with_flash_attn()
 

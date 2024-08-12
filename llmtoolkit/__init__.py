@@ -20,9 +20,6 @@ from .dataset import (
 from .evaluate import (
     simple_eval,
 )
-from .llama2_flashattn import (
-    replace_llama_attn_with_flash_attn,
-)
 from .memory_profiler import (
     export_memory_timeline_html,
 )
