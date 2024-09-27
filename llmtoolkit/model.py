@@ -43,20 +43,26 @@ def find_all_linear_names(args, model):
 
     if 'lm_head' in lora_module_names:
         lora_module_names.remove('lm_head')
+
+    if 'gate' in lora_module_names:
+        lora_module_names.remove('gate')
+
     return list(lora_module_names)
 
 
 def peft_model(args, model):
     if args.peft in ["lora", "lora-fa", "vera", "dora"]:
-        modules = []
+        attention_modules = ['query', 'q_proj', 'value', 'v_proj', 'key', 'k_proj', 'output', 'o_proj']
+        
+        modules = find_all_linear_names(args, model)
+
         if args.lora_modules == "all":
-            modules = find_all_linear_names(args, model)
+            pass
         elif args.lora_modules == "attention":
-            modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj']
+            modules = [s for s in modules if any(module in s for module in attention_modules)]
         elif args.lora_modules == "mlp":
-            modules = ['up_proj', 'down_proj', 'gate_proj']
+            modules = [s for s in modules if all(module not in s for module in attention_modules)]
         else:
-            modules = find_all_linear_names(args, model)
             target_modules = args.lora_modules.split(",")
             for m in target_modules:
                 if m not in modules:
@@ -149,13 +155,14 @@ def get_accelerate_model(args, checkpoint_dir):
 
     max_memory = f'{args.max_memory_MB}MB'
     max_memory = {i: max_memory for i in range(n_gpus)}
-    device_map = "auto"
+    device_map = None
 
-    # if we are in a distributed setting, we need to set the device map and max memory per device
-    if os.environ.get('LOCAL_RANK') is not None:
-        local_rank = int(os.environ.get('LOCAL_RANK', '0'))
-        device_map = {'': local_rank}
-        max_memory = {'': max_memory[local_rank]}
+    if args.device_map != None:
+        # if we are in a distributed setting, we need to set the device map and max memory per device
+        if os.environ.get('LOCAL_RANK') is not None:
+            local_rank = int(os.environ.get('LOCAL_RANK', '0'))
+            device_map = {'': local_rank}
+            max_memory = {'': max_memory[local_rank]}
 
     if args.deepspeed != None:
         print_rank_0("Using deepspeed, disabling device_map...")
@@ -273,6 +280,15 @@ def get_accelerate_model(args, checkpoint_dir):
                         if module.weight.dtype == torch.float32:
                             module = module.to(
                                 torch.float16 if args.fp16 else torch.bfloat16)
+
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
+    else:
+        def make_inputs_require_grad(module, input, output):
+            output.requires_grad_(True)
+
+        model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+
     return model, tokenizer
 
 
