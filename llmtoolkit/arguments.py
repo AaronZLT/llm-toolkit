@@ -210,6 +210,9 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=30, metadata={"help": 'profiler_warmup_step. Default = 30 steps.'})
     profiler_step_log: bool = field(default=False, metadata={
                                     "help": 'Profile with detailed log (every step): train/eval loss, etc. Default = False'})
+    device_map: str = field(default=None, metadata={
+                          "help": 'device map. Set to "auto" if enabled. Default is None.'})
+
     debug_mode: bool = field(
         default=False,
         metadata={"help": "Turn on debug mode."}
