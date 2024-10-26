@@ -1,0 +1,7 @@
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/Llama-2-7b-hf",
+    "peft": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-Llama-2-7b-hf-BnB-4bit-bs8-lora/checkpoint-1870",
+    "bits": 4,
+    "mode": "mix",
+    "GSM8K Acc": 0.3813495072024261
+}

@@ -281,7 +281,7 @@ class DataCollatorForCausalLM(object):
         return data_dict
 
 
-def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
+def build_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
     """
     Make dataset and collator for supervised fine-tuning.
     Datasets are expected to have the following columns: { `input`, `output` }
@@ -383,35 +383,33 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
     dataset = load_data(args.dataset, args.local_data_path)
     dataset = format_dataset(args.dataset, args.dataset_format, dataset)
 
-    if args.do_eval or args.do_predict:
-        if 'eval' in dataset:
-            eval_dataset = dataset['eval']
-        elif 'test' in dataset:
-            eval_dataset = dataset['test']
-        else:
-            print_rank_0(
-                'Splitting train dataset in train and validation according to `eval_dataset_size`')
-            dataset = dataset["train"].train_test_split(
-                test_size=args.eval_dataset_size, shuffle=True, seed=42
-            )
-            eval_dataset = dataset['test']
+    if 'eval' in dataset:
+        eval_dataset = dataset['eval']
+    elif 'test' in dataset:
+        eval_dataset = dataset['test']
+    else:
+        print_rank_0(
+            'Splitting train dataset in train and validation according to `eval_dataset_size`')
+        dataset = dataset["train"].train_test_split(
+            test_size=args.eval_dataset_size, shuffle=True, seed=42
+        )
+        eval_dataset = dataset['test']
 
-        if args.max_eval_samples is not None and len(eval_dataset) > args.max_eval_samples:
-            eval_dataset = eval_dataset.select(range(args.max_eval_samples))
-        if args.group_by_length:
-            eval_dataset = eval_dataset.map(
-                lambda x: {'length': len(x['input']) + len(x['output'])})
+    if args.max_eval_samples is not None and len(eval_dataset) > args.max_eval_samples:
+        eval_dataset = eval_dataset.select(range(args.max_eval_samples))
+    if args.group_by_length:
+        eval_dataset = eval_dataset.map(
+            lambda x: {'length': len(x['input']) + len(x['output'])})
 
-    if args.do_train:
-        train_dataset = dataset['train']
-        if args.max_train_samples is not None and len(train_dataset) > args.max_train_samples:
-            train_dataset = train_dataset.select(range(args.max_train_samples))
-        if args.group_by_length:
-            train_dataset = train_dataset.map(
-                lambda x: {'length': len(x['input']) + len(x['output'])})
-        for index in random.sample(range(len(train_dataset)), 3):
-            print_rank_0(
-                f"Sample {index} of the training set:\n{train_dataset[index]}.")
+    train_dataset = dataset['train']
+    if args.max_train_samples is not None and len(train_dataset) > args.max_train_samples:
+        train_dataset = train_dataset.select(range(args.max_train_samples))
+    if args.group_by_length:
+        train_dataset = train_dataset.map(
+            lambda x: {'length': len(x['input']) + len(x['output'])})
+    for index in random.sample(range(len(train_dataset)), 3):
+        print_rank_0(
+            f"Sample {index} of the training set:\n{train_dataset[index]}.")
 
     data_collator = DataCollatorForCausalLM(
         tokenizer=tokenizer,
@@ -422,8 +420,8 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         hard_padding=args.hard_padding,
     )
     return dict(
-        train_dataset=train_dataset if args.do_train else None,
-        eval_dataset=eval_dataset if args.do_eval else None,
-        predict_dataset=eval_dataset if args.do_predict else None,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        predict_dataset=eval_dataset,
         data_collator=data_collator
     )

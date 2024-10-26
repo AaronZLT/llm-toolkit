@@ -19,6 +19,7 @@ from peft import (
     PrefixTuningConfig,
     PromptTuningConfig,
     get_peft_model,
+    PeftModel,
 )
 from peft.tuners.lora import LoraLayer
 from peft import get_peft_config, get_peft_model, PromptTuningInit, PromptTuningConfig, TaskType, PeftType
@@ -26,10 +27,12 @@ from peft import get_peft_config, get_peft_model, PromptTuningInit, PromptTuning
 from .utils import (
     print_rank_0,
     is_ipex_available,
+    create_timestamp,
 )
 from .dataset import (
     DEFAULT_PAD_TOKEN,
 )
+
 
 def find_all_linear_names(args, model):
     linear_cls = bnb.nn.Linear4bit if args.bits == 4 else (
@@ -52,16 +55,19 @@ def find_all_linear_names(args, model):
 
 def peft_model(args, model):
     if args.peft in ["lora", "lora-fa", "vera", "dora"]:
-        attention_modules = ['query', 'q_proj', 'value', 'v_proj', 'key', 'k_proj', 'output', 'o_proj']
-        
+        attention_modules = ['query', 'q_proj', 'value',
+                             'v_proj', 'key', 'k_proj', 'output', 'o_proj']
+
         modules = find_all_linear_names(args, model)
 
         if args.lora_modules == "all":
             pass
         elif args.lora_modules == "attention":
-            modules = [s for s in modules if any(module in s for module in attention_modules)]
+            modules = [s for s in modules if any(
+                module in s for module in attention_modules)]
         elif args.lora_modules == "mlp":
-            modules = [s for s in modules if all(module not in s for module in attention_modules)]
+            modules = [s for s in modules if all(
+                module not in s for module in attention_modules)]
         else:
             target_modules = args.lora_modules.split(",")
             for m in target_modules:
@@ -140,8 +146,9 @@ def get_accelerate_model(args, checkpoint_dir):
         import importlib.util
         flashattn_spec = importlib.util.find_spec("flash-attn")
         if flashattn_spec is None:
-            raise FileNotFoundError("You can not use flash_attn now since flash-attn was not installed.")
-            
+            raise FileNotFoundError(
+                "You cannot use flash_attn now since flash-attn was not installed.")
+
         from .llama2_flashattn import (
             replace_llama_attn_with_flash_attn,
         )
@@ -224,16 +231,6 @@ def get_accelerate_model(args, checkpoint_dir):
     model.config.torch_dtype = (torch.float16 if args.fp16 else (
         torch.bfloat16 if args.bf16 else torch.float32))
 
-    # Tokenizer
-    # tokenizer = AutoTokenizer.from_pretrained(
-    #     args.model_name_or_path,
-    #     cache_dir=args.cache_dir,
-    #     padding_side="right",
-    #     use_fast=False,
-    #     tokenizer_type='llama' if 'llama' in args.model_name_or_path else None,
-    #     trust_remote_code=args.trust_remote_code,
-    #     use_auth_token=args.use_auth_token,
-    # )
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
     tokenizer.padding_side = 'right'
 

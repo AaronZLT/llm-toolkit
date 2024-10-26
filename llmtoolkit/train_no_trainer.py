@@ -33,7 +33,7 @@ from .arguments import (
     GenerationArguments,
 )
 from .dataset import (
-    make_data_module,
+    build_data_module,
 )
 from .model import (
     get_accelerate_model,
@@ -184,7 +184,7 @@ def train_no_trainer():
     memory_tracer.trace()
 
     # for now we only create dataloaders for train_dataset and eval_dataset
-    data_module = make_data_module(tokenizer=tokenizer, args=args)
+    data_module = build_data_module(tokenizer=tokenizer, args=args)
 
     train_dataloader = DataLoader(
         data_module["train_dataset"], shuffle=True, collate_fn=data_module["data_collator"], batch_size=args.per_device_train_batch_size

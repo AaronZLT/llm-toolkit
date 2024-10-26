@@ -1,14 +1,27 @@
+import argparse
 from typing import Optional
 from dataclasses import dataclass, field
 
 import torch
 import transformers
 
+from .utils import (
+    print_rank_0,
+    get_unique_key,
+)
 
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(
         default="meta-llama/Llama-2-7b-hf"
+    )
+    peft_name_or_path: Optional[str] = field(
+        default=None
+    )
+    unify_load: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to merge the adapter into base mode after loaded."}
     )
     trust_remote_code: Optional[bool] = field(
         default=False,
@@ -148,7 +161,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         metadata={"help": "Use 8-bit adam."}
     )
     max_memory_MB: int = field(
-        default=40000,
+        default=80000,
         metadata={
             "help": "Free memory per gpu. E.g., for H100 this should be set to 80000."}
     )
@@ -211,7 +224,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     profiler_step_log: bool = field(default=False, metadata={
                                     "help": 'Profile with detailed log (every step): train/eval loss, etc. Default = False'})
     device_map: str = field(default=None, metadata={
-                          "help": 'device map. Set to "auto" if enabled. Default is None.'})
+        "help": 'device map. Set to "auto" if enabled. Default is None.'})
 
     debug_mode: bool = field(
         default=False,
@@ -250,3 +263,41 @@ class GenerationArguments:
     repetition_penalty: Optional[float] = field(default=1.0)
     length_penalty: Optional[float] = field(default=1.0)
     no_repeat_ngram_size: Optional[int] = field(default=0)
+
+def get_args():
+    hfparser = transformers.HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments, GenerationArguments))
+    model_args, data_args, training_args, generation_args, extra_args = hfparser.parse_args_into_dataclasses(
+        return_remaining_strings=True)
+    training_args.generation_config = transformers.GenerationConfig(
+        **vars(generation_args))
+    args = argparse.Namespace(
+        **vars(model_args), **vars(data_args), **vars(training_args)
+    )
+
+    # run_name is post inited in Transformers: if self.run_name is None: self.run_name = self.output_dir
+    if args.run_name == args.output_dir:
+        print_rank_0(
+            f"Set run_name from '{args.output_dir}' to '{get_unique_key(args)}'")
+        args.run_name = get_unique_key(args)
+        training_args.run_name = get_unique_key(args)
+
+    if args.output_dir == "default_output":
+        print_rank_0(
+            f"Set output_dir from 'default_output' to '{get_unique_key(args)}'")
+        args.output_dir = get_unique_key(args)
+        training_args.output_dir = get_unique_key(args)
+
+    if args.deepspeed:
+        training_args.distributed_state.distributed_type = DistributedType.DEEPSPEED
+
+    print_rank_0(args)
+
+    args_dict = {
+        "model_args": model_args,
+        "data_args": data_args,
+        "training_args": training_args,
+        "generation_args": generation_args,
+        "extra_args": extra_args
+    }
+    return args, args_dict

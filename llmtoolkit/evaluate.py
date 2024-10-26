@@ -8,6 +8,7 @@ from typing import Optional, Dict, Sequence, Tuple, Union, List
 
 import torch
 import transformers
+from transformers.trainer_utils import PredictionOutput
 import evaluate
 
 import lm_eval
@@ -89,9 +90,36 @@ def simple_eval(model_name_or_path: str, peft: str = None, tasks: List = None, o
 
 
 """
-We also provide some other in-training eval fuctions.
+We also provide some other custom eval fuctions.
 """
+def compute_metrics(p: PredictionOutput):
+    predictions = p.predictions
+    label_ids = p.label_ids  # shape (batch_size, seq_len)
+    if False:
+        # Hard metric: the model must output exactly the same as the target
+        # This should be the default evaluation metric for most tasks
+        pred = np.argmax(predictions[0], axis=-1)
+        num_correct = sum([np.array_equal(pred[i], label_ids[i])
+                          for i in range(len(pred))])
+        accuracy = num_correct / len(pred)
+    else:
+        # Soft metric: we limit the output space to the target space
+        # i.e. the model classify the one with higher prob in positive and negative
+        # **Use it in cola and mrpc, because it's too hard for vanilla lora**
+        # Only suit for the binary classification with each label of 1 token
+        label_ids = label_ids[:, 0]  # remove the eos token
+        unique_labels = np.unique(label_ids)
+        flipped_labels = np.ones_like(
+            label_ids) * unique_labels.sum() - label_ids
+        # remove the eos token # seq_len, tokens
+        predictions = predictions[0][:, 0, :]
+        label_prob = predictions[np.arange(len(predictions)), label_ids]
+        flipped_label_prob = predictions[np.arange(
+            len(predictions)), flipped_labels]
+        num_correct = sum(label_prob > flipped_label_prob)
+        accuracy = num_correct / len(label_prob)
 
+    return {"accuracy": accuracy}
 
 def eval_perplexity(eval_loss):
     try:
