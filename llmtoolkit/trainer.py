@@ -34,10 +34,10 @@ class Seq2SeqTrainer_llmtoolkit(Seq2SeqTrainer):
         super().__init__(*args, **kwargs)
         self.step_seq = []
 
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], num_items_in_batch) -> torch.Tensor:
         self.step_seq.append(inputs["input_ids"].numel())
 
-        return super().training_step(model=model, inputs=inputs)
+        return super().training_step(model=model, inputs=inputs, num_items_in_batch = num_items_in_batch)
 
     def get_trained_seq(self):
         return self.step_seq

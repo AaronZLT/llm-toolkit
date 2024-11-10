@@ -6,6 +6,7 @@ from .arguments import (
     DataArguments,
     TrainingArguments,
     GenerationArguments,
+    get_args,
 )
 from .callbacks import (
     EmptycacheCallback,
@@ -15,10 +16,13 @@ from .callbacks import (
 from .dataset import (
     IGNORE_INDEX,
     DEFAULT_PAD_TOKEN,
-    make_data_module,
+    build_data_module,
 )
 from .evaluate import (
-    simple_eval,
+    offline_evaluate,
+    infly_evaluate,
+    vllm_lm_eval,
+    hf_lm_eval,
 )
 from .memory_profiler import (
     export_memory_timeline_html,
@@ -28,6 +32,10 @@ from .model import (
     get_last_checkpoint,
     print_trainable_parameters,
 )
+from .load_and_save import (
+    flexible_load,
+    merge_and_save,
+)
 from .train import (
     train,
 )
@@ -36,6 +44,10 @@ from .train_no_trainer import (
 )
 from .trainer import (
     Seq2SeqTrainer_llmtoolkit,
+)
+from .inference import (
+    single_inference,
+    vllm_inference,
 )
 from .utils import (
     get_rank,

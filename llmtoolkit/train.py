@@ -1,14 +1,11 @@
 import os
 import json
-import argparse
 import numpy as np
 
 import torch
-from torch.profiler._memory_profiler import MemoryProfileTimeline
 import transformers
 from transformers import (
     set_seed,
-    Seq2SeqTrainer,
 )
 import accelerate
 from accelerate import Accelerator
@@ -19,15 +16,15 @@ from .arguments import (
     DataArguments,
     TrainingArguments,
     GenerationArguments,
+    get_args,
 )
 from .callbacks import (
     EmptycacheCallback,
     PT_ProfCallback,
     StepInfoCallback,
-    EvalCallback,
 )
 from .dataset import (
-    make_data_module,
+    build_data_module,
 )
 from .model import (
     get_accelerate_model,
@@ -50,33 +47,7 @@ from .memory_profiler import (
 
 
 def train():
-    hfparser = transformers.HfArgumentParser(
-        (ModelArguments, DataArguments, TrainingArguments, GenerationArguments))
-    model_args, data_args, training_args, generation_args, extra_args = hfparser.parse_args_into_dataclasses(
-        return_remaining_strings=True)
-    training_args.generation_config = transformers.GenerationConfig(
-        **vars(generation_args))
-    args = argparse.Namespace(
-        **vars(model_args), **vars(data_args), **vars(training_args)
-    )
-
-    # run_name is post inited in Transformers: if self.run_name is None: self.run_name = self.output_dir
-    if args.run_name == args.output_dir:
-        print_rank_0(
-            f"Set run_name from '{args.output_dir}' to '{get_unique_key(args)}'")
-        args.run_name = get_unique_key(args)
-        training_args.run_name = get_unique_key(args)
-
-    if args.output_dir == "default_output":
-        print_rank_0(
-            f"Set output_dir from 'default_output' to '{get_unique_key(args)}'")
-        args.output_dir = get_unique_key(args)
-        training_args.output_dir = get_unique_key(args)
-
-    if args.deepspeed:
-        training_args.distributed_state.distributed_type = DistributedType.DEEPSPEED
-
-    print_rank_0(args)
+    args, args_dict = get_args()
     set_seed(args.seed)
     
     # no jit CPUAdamBuilder since it is too slow or may break the training process
@@ -97,12 +68,12 @@ def train():
     trainable_param, all_param, trainable_rate = print_trainable_parameters(
         model, args.debug_mode)
 
-    data_module = make_data_module(tokenizer=tokenizer, args=args)
+    data_module = build_data_module(tokenizer=tokenizer, args=args)
 
     trainer = Seq2SeqTrainer_llmtoolkit(
         model=model,
         tokenizer=tokenizer,
-        args=training_args,
+        args=args_dict["training_args"],
         **{k: v for k, v in data_module.items() if k != 'predict_dataset'},
     )
 
@@ -121,11 +92,9 @@ def train():
     if args.profiler == "deepspeed":
         return NotImplementedError("deepspeed is not supported")
     if args.profiler == "pytorch":
-        MemoryProfileTimeline.export_memory_timeline_html = export_memory_timeline_html
+        torch.profiler._memory_profiler.MemoryProfileTimeline.export_memory_timeline_html = export_memory_timeline_html
         trainer.add_callback(PT_ProfCallback(
             warmup_step=args.profiler_warmup_step, key=get_unique_key(args), output_dir=args.output_dir))
-
-    trainer.add_callback(EvalCallback())
 
     all_metrics = {"run_name": args.run_name}
 

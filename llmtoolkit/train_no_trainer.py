@@ -1,18 +1,10 @@
 from tqdm.auto import tqdm
-import evaluate
-import datasets
-from pathlib import Path
-import random
 import math
-import logging
 import os
-import json
 import argparse
-import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
-from torch.profiler._memory_profiler import MemoryProfileTimeline
 from torch.utils.data import DataLoader
 
 import transformers
@@ -33,7 +25,7 @@ from .arguments import (
     GenerationArguments,
 )
 from .dataset import (
-    make_data_module,
+    build_data_module,
 )
 from .model import (
     get_accelerate_model,
@@ -42,15 +34,11 @@ from .model import (
 )
 from .utils import (
     print_rank_0,
-    safe_dict2file,
     get_unique_key,
     hardware_info,
-    clear_torch_cache,
     get_rank,
 )
-from .memory_profiler import (
-    export_memory_timeline_html,
-)
+
 
 r'''
 For now, memory_tracer only print on rank_0
@@ -184,7 +172,7 @@ def train_no_trainer():
     memory_tracer.trace()
 
     # for now we only create dataloaders for train_dataset and eval_dataset
-    data_module = make_data_module(tokenizer=tokenizer, args=args)
+    data_module = build_data_module(tokenizer=tokenizer, args=args)
 
     train_dataloader = DataLoader(
         data_module["train_dataset"], shuffle=True, collate_fn=data_module["data_collator"], batch_size=args.per_device_train_batch_size
