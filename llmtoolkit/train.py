@@ -1,14 +1,11 @@
 import os
 import json
-import argparse
 import numpy as np
 
 import torch
-from torch.profiler._memory_profiler import MemoryProfileTimeline
 import transformers
 from transformers import (
     set_seed,
-    Seq2SeqTrainer,
 )
 import accelerate
 from accelerate import Accelerator
@@ -25,7 +22,6 @@ from .callbacks import (
     EmptycacheCallback,
     PT_ProfCallback,
     StepInfoCallback,
-    EvalCallback,
 )
 from .dataset import (
     build_data_module,
@@ -96,11 +92,9 @@ def train():
     if args.profiler == "deepspeed":
         return NotImplementedError("deepspeed is not supported")
     if args.profiler == "pytorch":
-        MemoryProfileTimeline.export_memory_timeline_html = export_memory_timeline_html
+        torch.profiler._memory_profiler.MemoryProfileTimeline.export_memory_timeline_html = export_memory_timeline_html
         trainer.add_callback(PT_ProfCallback(
             warmup_step=args.profiler_warmup_step, key=get_unique_key(args), output_dir=args.output_dir))
-
-    trainer.add_callback(EvalCallback())
 
     all_metrics = {"run_name": args.run_name}
 

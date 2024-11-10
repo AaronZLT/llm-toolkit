@@ -1,12 +1,9 @@
 import os
 import time
 import numpy as np
-from tqdm import tqdm
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import transformers
-import evaluate
 from accelerate import Accelerator
 
 from .utils import (
@@ -16,15 +13,6 @@ from .utils import (
     rank_0,
     plot_xy,
     save_fig,
-)
-from .dataset import (
-    IGNORE_INDEX,
-)
-from .trainer import (
-    Seq2SeqTrainer_llmtoolkit,
-)
-from .evaluate import (
-    eval_perplexity,
 )
 
 
@@ -96,7 +84,7 @@ class StepInfoCallback(transformers.TrainerCallback):
         self.step_log = step_log
         self.trainable_param = trainable_param
 
-    def get_token_per_step(self) -> List:
+    def get_token_per_step(self) -> list:
         seq = self.trainer.get_trained_seq()
         return seq
 
@@ -209,11 +197,3 @@ class SavePeftModelCallback(transformers.TrainerCallback):
 
         touch(join(args.output_dir, 'completed'))
         self.save_model(args, state, kwargs)
-
-
-class EvalCallback(transformers.TrainerCallback):
-    def on_evaluate(self, args, state, control, **kwargs):
-        metrics = kwargs["metrics"]
-        eval_loss = metrics["eval_loss"]
-        ppl = eval_perplexity(eval_loss)
-        kwargs["metrics"]["eval_perplexity"] = ppl

@@ -8,13 +8,12 @@ from importlib import metadata
 import functools
 from functools import wraps
 import warnings
-from typing import Dict, List
+from typing import List
 from packaging import version
 from collections import Counter
 import matplotlib.pyplot as plt
 
 import torch
-from pynvml import *
 
 
 def deprecated(func):
@@ -134,6 +133,13 @@ def plot_xy(x, y, title):
 def save_fig(fig, path):
     fig.savefig(path)
 
+@rank_0
+def require_lib(pylib: str):
+    import importlib.util
+    pylib_spec = importlib.util.find_spec(pylib)
+    if pylib_spec is None:
+        raise FileNotFoundError(
+            f"{pylib} is required but not installed.")
 
 def get_unique_key(args):
     # model, dataset, hyperparam

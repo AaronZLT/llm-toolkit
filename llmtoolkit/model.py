@@ -8,7 +8,6 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     BitsAndBytesConfig,
-    LlamaTokenizer
 )
 from transformers.pytorch_utils import Conv1D
 import bitsandbytes as bnb
@@ -22,15 +21,11 @@ from peft import (
     PeftModel,
 )
 from peft.tuners.lora import LoraLayer
-from peft import get_peft_config, get_peft_model, PromptTuningInit, PromptTuningConfig, TaskType, PeftType
 
 from .utils import (
     print_rank_0,
     is_ipex_available,
-    create_timestamp,
-)
-from .dataset import (
-    DEFAULT_PAD_TOKEN,
+    require_lib,
 )
 
 
@@ -85,6 +80,7 @@ def peft_model(args, model):
                 lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
+                init_lora_weights=args.init_lora_weights,
             )
             _peft_model = get_peft_model(model, config)
         elif args.peft == "lora-fa":
@@ -95,6 +91,7 @@ def peft_model(args, model):
                 lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
+                init_lora_weights=args.init_lora_weights,
             )
             _peft_model = get_peft_model(model, config)
             for name, param in _peft_model.named_parameters():
@@ -143,12 +140,7 @@ def peft_model(args, model):
 
 def get_accelerate_model(args, checkpoint_dir):
     if args.flash_attn == True:
-        import importlib.util
-        flashattn_spec = importlib.util.find_spec("flash-attn")
-        if flashattn_spec is None:
-            raise FileNotFoundError(
-                "You cannot use flash_attn now since flash-attn was not installed.")
-
+        require_lib("flash-attn")
         from .llama2_flashattn import (
             replace_llama_attn_with_flash_attn,
         )

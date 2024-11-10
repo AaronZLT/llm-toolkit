@@ -1,26 +1,24 @@
 import os
 import re
-import time
-import math
-import numpy as np
 from tqdm import tqdm
-from typing import Optional, Dict, Sequence, Tuple, Union, List
-
-import torch
-import transformers
-from transformers.trainer_utils import PredictionOutput
-import evaluate
+from abc import ABC, abstractmethod
 
 import lm_eval
+import transformers
+from transformers import AutoTokenizer
 
 from .utils import (
     print_rank_0,
     safe_dict2file,
     get_rank,
     create_timestamp,
+    require_lib,
+)
+from .inference import (
+    vllm_inference,
 )
 from .dataset import (
-    IGNORE_INDEX,
+    build_data_module,
 )
 
 '''
@@ -39,91 +37,154 @@ task2shot = {
     "openbookqa": 5,
 }
 
-
-def eval(model_name_or_path: str, task2shot: Dict[str, int], peft: str = None, output_dir: str = None, all_output: bool = False):
+def vllm_lm_eval(task: str, model_name_or_path: str, shot: int = None, dump: bool = False, output_dir: str = None) -> list:
+    require_lib("vllm")
     task_manager = lm_eval.tasks.TaskManager()
-    shot2task = {}
-    results = []
+    if shot == None:
+        if task in task2shot.keys():
+            shot = task2shot[task]
+        else:
+            shot = 0
+
+    model_args = f"pretrained={model_name_or_path},tensor_parallel_size={hardware_info().n_gpus},dtype=bfloat16,max_model_len=4096"
+
+    print_rank_0(f"evaluating {task}")
+    result = lm_eval.simple_evaluate(
+        model="vllm",
+        model_args=model_args,
+        tasks=[task],
+        num_fewshot=shot,
+        task_manager=task_manager,
+        batch_size="auto")
+
+    if dump:
+        if get_rank() == 0:
+            if output_dir == None:
+                output_dir = f"eval_{create_timestamp()}"
+            safe_dict2file({"model": model_name_or_path}, os.path.join(output_dir, "eval_result.txt"))
+            safe_dict2file(result, os.path.join(output_dir, "eval_result.txt"))
+
+    return result
+
+
+def hf_lm_eval(task: str, model_name_or_path: str, peft_name_or_path: str = None, shot: int = None, dump: bool = False, output_dir: str = None) -> list:
+    task_manager = lm_eval.tasks.TaskManager()
+    if shot == None:
+        if task in task2shot.keys():
+            shot = task2shot[task]
+        else:
+            shot = 0
 
     model_args = f"pretrained={model_name_or_path},tokenizer={model_name_or_path},dtype=bfloat16"
-
     if peft != None:
         model_args += f",peft={peft}"
 
-    for key, value in task2shot.items():
-        if value not in shot2task:
-            shot2task[value] = [key]
-        else:
-            shot2task[value].append(key)
+    print_rank_0(f"evaluating {task}")
+    result = lm_eval.simple_evaluate(
+        model="hf",
+        model_args=model_args,
+        tasks=[task],
+        num_fewshot=shot,
+        task_manager=task_manager,
+        batch_size="auto")
 
-    for shot, tasks in shot2task.items():
-        print_rank_0(f"evaluating {tasks}")
-        results.append(lm_eval.simple_evaluate(
-            model="hf",
-            model_args=model_args,
-            tasks=tasks,
-            num_fewshot=shot,
-            task_manager=task_manager,
-            batch_size="auto"))
+    if dump:
+        if get_rank() == 0:
+            if output_dir == None:
+                output_dir = f"eval_{create_timestamp()}"
+            safe_dict2file({"model": model_name_or_path}, os.path.join(output_dir, "eval_result.txt"))
+            safe_dict2file(result, os.path.join(output_dir, "eval_result.txt"))
 
-    # save the result
-    if get_rank() == 0:
-        if output_dir == None:
-            output_dir = f"eval_{create_timestamp()}"
-        safe_dict2file({"model": model_name_or_path, "peft": peft},
-                       os.path.join(output_dir, "eval_result.txt"))
-        for result in results:
-            if all_output:
-                safe_dict2file(result, os.path.join(
-                    output_dir, "eval_result.txt"))
-            else:
-                safe_dict2file(result["results"], os.path.join(
-                    output_dir, "eval_result.txt"))
-
-
-def simple_eval(model_name_or_path: str, peft: str = None, tasks: List = None, output_dir: str = None, all_output: bool = False):
-    if tasks == None:
-        raise ValueError("Evaluate tasks must be specified!")
-
-    task_shot = {task: task2shot[task] for task in tasks}
-    eval(model_name_or_path, task_shot, peft, output_dir, all_output)
-
+    return result
 
 """
 We also provide some other custom eval fuctions.
+
+The evaluate data should be the format below. 
+data = [
+    {"prompt": "Q1", "golden": "This is the correct answer", "predicate": "This is the predicate answer"},
+    {"prompt": "Q2", "golden": "This is the correct answer", "predicate": "This is the predicate answer"},
+]
+
+usage:
+> task = 'gsm8k'
+> accuracy = evaluate(data, task)
+> print(f"Accuracy: {accuracy:.2f}")
 """
-def compute_metrics(p: PredictionOutput):
-    predictions = p.predictions
-    label_ids = p.label_ids  # shape (batch_size, seq_len)
-    if False:
-        # Hard metric: the model must output exactly the same as the target
-        # This should be the default evaluation metric for most tasks
-        pred = np.argmax(predictions[0], axis=-1)
-        num_correct = sum([np.array_equal(pred[i], label_ids[i])
-                          for i in range(len(pred))])
-        accuracy = num_correct / len(pred)
+class EvaluationStrategy(ABC):
+    @abstractmethod
+    def is_correct(self, golden: str, predicate: str) -> bool:
+        pass
+
+class DefaultEvaluationStrategy(EvaluationStrategy):
+    def is_correct(self, golden: str, predicate: str) -> bool:
+        return golden == predicate
+
+class GSM8KEvaluationStrategy(EvaluationStrategy):
+    def is_correct(self, golden: str, predicate: str) -> bool:
+        golden_numbers = self.extract_numbers(golden)
+        predicate_numbers = self.extract_numbers(predicate)
+        return golden_numbers == predicate_numbers
+    
+    def extract_numbers(self, text: str):
+        pattern = r'#### (-?[0-9.,]+)'
+        matches = re.findall(pattern, text)
+        if matches:
+            result = matches[-1]
+        else:
+            result = ""
+        result = result.replace(',', '')
+        try:
+            return int(result)
+        except ValueError:
+            try:
+                return float(result)
+            except ValueError:
+                print(f"'{result}' is invalid thus cannot be transformed into numbers")
+                return 0
+
+class Evaluator:
+    def __init__(self, strategy: EvaluationStrategy):
+        self.strategy = strategy
+    
+    def evaluate(self, data: list) -> float:
+        total = len(data)
+        correct = sum(
+            self.strategy.is_correct(item['golden'], item['predicate'])
+            for item in tqdm(data, desc="Evaluating")
+        )
+        return correct / total if total > 0 else 0.0
+
+def offline_evaluate(task: str, data: list) -> float:
+    if task == 'gsm8k':
+        strategy = GSM8KEvaluationStrategy()
     else:
-        # Soft metric: we limit the output space to the target space
-        # i.e. the model classify the one with higher prob in positive and negative
-        # **Use it in cola and mrpc, because it's too hard for vanilla lora**
-        # Only suit for the binary classification with each label of 1 token
-        label_ids = label_ids[:, 0]  # remove the eos token
-        unique_labels = np.unique(label_ids)
-        flipped_labels = np.ones_like(
-            label_ids) * unique_labels.sum() - label_ids
-        # remove the eos token # seq_len, tokens
-        predictions = predictions[0][:, 0, :]
-        label_prob = predictions[np.arange(len(predictions)), label_ids]
-        flipped_label_prob = predictions[np.arange(
-            len(predictions)), flipped_labels]
-        num_correct = sum(label_prob > flipped_label_prob)
-        accuracy = num_correct / len(label_prob)
+        strategy = DefaultEvaluationStrategy()
+        
+    evaluator = Evaluator(strategy)
+    return evaluator.evaluate(data)
 
-    return {"accuracy": accuracy}
+def infly_evaluate(task: str, model_name_or_path, peft_name_or_path: str = None) -> float:
+    if task == 'gsm8k':
+        strategy = GSM8KEvaluationStrategy()
+    else:
+        strategy = DefaultEvaluationStrategy()
 
-def eval_perplexity(eval_loss):
-    try:
-        perplexity = math.exp(eval_loss)
-    except OverflowError:
-        perplexity = float("inf")
-    return perplexity
+    evaluator = Evaluator(strategy)
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    eval_dataset = build_data_module(tokenizer, task)["eval_dataset"].select(range(100))
+    prompts = list(eval_dataset['input'])
+    prompt_to_golden = {item['input']: item['output'] for item in eval_dataset}
+
+    results = vllm_inference(prompts, model_name_or_path, peft_name_or_path)
+
+    inspection = []
+    for result in results:
+        prompt = result['prompt']
+        response = result['response']
+        golden = prompt_to_golden.get(prompt, None)
+        if golden is not None:
+            inspection.append({'prompt': prompt, 'golden': golden, 'predicate': response})
+
+    return evaluator.evaluate(inspection)

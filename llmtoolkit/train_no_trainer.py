@@ -1,18 +1,10 @@
 from tqdm.auto import tqdm
-import evaluate
-import datasets
-from pathlib import Path
-import random
 import math
-import logging
 import os
-import json
 import argparse
-import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
-from torch.profiler._memory_profiler import MemoryProfileTimeline
 from torch.utils.data import DataLoader
 
 import transformers
@@ -42,15 +34,11 @@ from .model import (
 )
 from .utils import (
     print_rank_0,
-    safe_dict2file,
     get_unique_key,
     hardware_info,
-    clear_torch_cache,
     get_rank,
 )
-from .memory_profiler import (
-    export_memory_timeline_html,
-)
+
 
 r'''
 For now, memory_tracer only print on rank_0

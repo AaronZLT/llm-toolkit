@@ -2,7 +2,6 @@ import argparse
 from typing import Optional
 from dataclasses import dataclass, field
 
-import torch
 import transformers
 
 from .utils import (
@@ -54,7 +53,7 @@ class ModelArguments:
         default=1.0,
         metadata={"help": "Lora layers percentage from 0-1. Default is 1.0, i.e., 100% lora layers will be applied. *FOR TEST ONLY DO NOT USE*"}
     )
-    lora_init_method: Optional[str] = field(
+    init_lora_weights: Optional[str] = field(
         default="kaiming_uniform_",
         metadata={
             "help": "The method to init LoRA_A. Choose from [ones_, normal_, kaiming_uniform_]. *FOR TEST ONLY DO NOT USE*"}
@@ -110,12 +109,12 @@ class DataArguments:
         },
     )
     source_max_len: int = field(
-        default=1024,
+        default=512,
         metadata={
             "help": "Maximum source sequence length. Sequences will be right padded (and possibly truncated)."},
     )
     target_max_len: int = field(
-        default=1024,
+        default=512,
         metadata={
             "help": "Maximum target sequence length. Sequences will be right padded (and possibly truncated)."},
     )
@@ -124,37 +123,26 @@ class DataArguments:
         metadata={
             "help": "Force pad the length of input_ids (sequence length) to: source_max_len + target_max_len. Set this to True may impact throughput, but is recommend in benchmark. Default = False."},
     )
-    dataset: str = field(
+    dataset_name_or_path: str = field(
         default='alpaca',
         metadata={
-            "help": "Which dataset to finetune on. See datamodule for options."}
-    )
-    dataset_format: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf|super-natural]"}
-    )
-    local_data_path: str = field(
-        default=None,
-        metadata={
-            "help": "Where to find the dataset locally, otherwise it will download from huggingface if set to None."}
+            "help": "Which dataset to finetune on. See dataset.py for options."}
     )
     metrics_path: Optional[str] = field(
         default=None,
         metadata={
             "help": "Where to find the metrics locally, otherwise it will download from huggingface if set to None."}
     )
-
+    train_on_source: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to train on the input in addition to the target text. **Mostly used in pretraining."}
+    )
 
 @dataclass
 class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     cache_dir: Optional[str] = field(
         default=None
-    )
-    train_on_source: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "Whether to train on the input in addition to the target text. **Mostly used in pretraining."}
     )
     adam8bit: bool = field(
         default=False,

@@ -19,7 +19,10 @@ from .dataset import (
     build_data_module,
 )
 from .evaluate import (
-    simple_eval,
+    offline_evaluate,
+    infly_evaluate,
+    vllm_lm_eval,
+    hf_lm_eval,
 )
 from .memory_profiler import (
     export_memory_timeline_html,
@@ -44,6 +47,7 @@ from .trainer import (
 )
 from .inference import (
     single_inference,
+    vllm_inference,
 )
 from .utils import (
     get_rank,

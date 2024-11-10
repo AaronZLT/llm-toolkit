@@ -3,7 +3,6 @@ import os
 import re
 from typing import Dict, Sequence
 from dataclasses import dataclass
-import sys
 import pandas as pd
 import random
 
@@ -13,6 +12,9 @@ from torch.nn.utils.rnn import pad_sequence
 import datasets
 from datasets import load_dataset, Dataset
 
+from .arguments import (
+    DataArguments,
+)
 from .utils import (
     print_rank_0,
 )
@@ -20,12 +22,73 @@ from .utils import (
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "<[PAD]>"
 
+
+@dataclass
+class DataCollatorForCausalLM(object):
+    tokenizer: transformers.PreTrainedTokenizer
+    source_max_len: int
+    target_max_len: int
+    train_on_source: bool
+    hard_padding: bool
+
+    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+        # Extract elements
+        sources = [
+            f"{self.tokenizer.bos_token}{example['input']}" for example in instances]
+        targets = [
+            f"{example['output']}{self.tokenizer.eos_token}" for example in instances]
+        # Tokenize
+        tokenized_sources_with_prompt = self.tokenizer(
+            sources,
+            padding='max_length' if self.hard_padding else False,
+            max_length=self.source_max_len,
+            truncation=True,
+            add_special_tokens=False,
+        )
+        tokenized_targets = self.tokenizer(
+            targets,
+            padding='max_length' if self.hard_padding else False,
+            max_length=self.target_max_len,
+            truncation=True,
+            add_special_tokens=False,
+        )
+        # Build the input and labels for causal LM
+        input_ids = []
+        labels = []
+        for tokenized_source, tokenized_target in zip(
+            tokenized_sources_with_prompt['input_ids'],
+            tokenized_targets['input_ids']
+        ):
+            input_ids.append(torch.tensor(
+                tokenized_source + tokenized_target))
+            if not self.train_on_source:
+                labels.append(
+                    torch.tensor([IGNORE_INDEX for _ in range(
+                        len(tokenized_source))] + copy.deepcopy(tokenized_target))
+                )
+            else:
+                labels.append(torch.tensor(copy.deepcopy(
+                    tokenized_source + tokenized_target)))
+
+        # Apply padding
+        input_ids = pad_sequence(
+            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        labels = pad_sequence(
+            labels, batch_first=True, padding_value=IGNORE_INDEX)
+
+        data_dict = {
+            'input_ids': input_ids,
+            'attention_mask': input_ids.ne(self.tokenizer.pad_token_id),
+        }
+        if labels is not None:
+            data_dict['labels'] = labels
+        return data_dict
+
+
 """
 Below is the train prompt and preprocess functions for generating train dataset.
 Most of the training prompts are aligned with lm-eval, which is the same as 🤗 Open LLM Leaderboard.
 """
-
-
 @dataclass
 class SFTPrompt:
     default_input: str = ("Question: {question}\nAnswer: ")
@@ -196,6 +259,48 @@ def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
     return dataset.map(_preprocess_doc)
 
 
+"""
+Make dataset and collator for supervised fine-tuning.
+Datasets are expected to have the following columns: { `input`, `output` }
+"""
+DATASETS_ARGS = {
+    'alpaca': ("tatsu-lab/alpaca", {}),
+    'alpaca-dummy': ("Lohse/alpaca-dummy", {}),
+    'alpaca-clean': ("yahma/alpaca-cleaned", {}),
+    'alpaca-gpt4': ("vicgalle/alpaca-gpt4", {}),
+    'flanv2': ("conceptofmind/FLAN_2022", {}),
+    'chip2': ("laion/OIG", {'data_files': 'unified_chip2.jsonl'}),
+    'self-instruct': ("yizhongw/self_instruct", {'name': 'self_instruct'}),
+    'hh-rlhf': ("Anthropic/hh-rlhf", {}),
+    'longform': ("akoksal/LongForm", {}),
+    'oasst1': ("timdettmers/openassistant-guanaco", {}),
+    'gsm8k': ("openai/gsm8k", {'name': "main"}),
+    'hellaswag': ("Rowan/hellaswag", {}),
+    'wikitext2': ("wikitext", {'name': "wikitext-2-raw-v1"}),
+    'e2e': ("GEM/e2e_nlg", {}),
+    'math': ("Lohse/math", {}),
+    'commonsense': ("Lohse/commonsense", {}),
+}
+
+FORMAT_FUNCTIONS = {
+    'input-output': lambda x: x,
+    'alpaca': preprocess_alpaca,
+    'alpaca-clean': preprocess_alpaca,
+    'alpaca-gpt4': preprocess_alpaca,
+    'alpaca-dummy': preprocess_alpaca,
+    'gsm8k': preprocess_gsm8k,
+    'hellaswag': preprocess_hellaswag,
+    'chip2': preprocess_chip2,
+    'self-instruct': preprocess_selfinstruct,
+    'hh-rlhf': preprocess_hhrlhf,
+    'oasst1': preprocess_oasst1,
+    'wikitext2': preprocess_wikitext2,
+    'e2e': preprocess_e2e,
+    'math': preprocess_math,
+    'commonsense': preprocess_commonsense,
+}
+
+
 def local_dataset(dataset_name):
     if dataset_name.endswith('.json') or dataset_name.endswith('.jsonl'):
         full_dataset = Dataset.from_json(path_or_paths=dataset_name)
@@ -211,177 +316,53 @@ def local_dataset(dataset_name):
     return split_dataset
 
 
-"""
-Below is for constructing dataset and datacollator module.
-"""
-
-
-@dataclass
-class DataCollatorForCausalLM(object):
-    tokenizer: transformers.PreTrainedTokenizer
-    source_max_len: int
-    target_max_len: int
-    train_on_source: bool
-    predict_with_generate: bool
-    hard_padding: bool
-
-    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-        # Extract elements
-        sources = [
-            f"{self.tokenizer.bos_token}{example['input']}" for example in instances]
-        targets = [
-            f"{example['output']}{self.tokenizer.eos_token}" for example in instances]
-        # Tokenize
-        tokenized_sources_with_prompt = self.tokenizer(
-            sources,
-            padding='max_length' if self.hard_padding else False,
-            max_length=self.source_max_len,
-            truncation=True,
-            add_special_tokens=False,
-        )
-        tokenized_targets = self.tokenizer(
-            targets,
-            padding='max_length' if self.hard_padding else False,
-            max_length=self.target_max_len,
-            truncation=True,
-            add_special_tokens=False,
-        )
-        # Build the input and labels for causal LM
-        input_ids = []
-        labels = []
-        for tokenized_source, tokenized_target in zip(
-            tokenized_sources_with_prompt['input_ids'],
-            tokenized_targets['input_ids']
-        ):
-            if not self.predict_with_generate:
-                input_ids.append(torch.tensor(
-                    tokenized_source + tokenized_target))
-                if not self.train_on_source:
-                    labels.append(
-                        torch.tensor([IGNORE_INDEX for _ in range(
-                            len(tokenized_source))] + copy.deepcopy(tokenized_target))
-                    )
-                else:
-                    labels.append(torch.tensor(copy.deepcopy(
-                        tokenized_source + tokenized_target)))
-            else:
-                input_ids.append(torch.tensor(tokenized_source))
-        # Apply padding
-        input_ids = pad_sequence(
-            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id)
-        labels = pad_sequence(
-            labels, batch_first=True, padding_value=IGNORE_INDEX) if not self.predict_with_generate else None
-
-        data_dict = {
-            'input_ids': input_ids,
-            'attention_mask': input_ids.ne(self.tokenizer.pad_token_id),
-        }
-        if labels is not None:
-            data_dict['labels'] = labels
-        return data_dict
-
-
-def build_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
+def load_data(dataset_name_or_path):
     """
-    Make dataset and collator for supervised fine-tuning.
-    Datasets are expected to have the following columns: { `input`, `output` }
-
-    Available datasets to be selected with `dataset` argument:
-        - alpaca, 52002 examples
-        - alpaca cleaned, 51942 examples
-        - chip2 (OIG), 210289 examples
-        - self-instruct, 82612 examples
-        - hh-rlhf (Anthropic), 160800 examples
-        - longform, 23.7k examples
-        - oasst1 (OpenAssistant) primary message tree only, 9,846 examples
-
-    Coming soon:
-        - unnatural instructions core, 66010 examples
-        - unnatural instructions full, 240670 examples
-        - alpaca-gpt4, 52002 examples
-        - unnatural-instructions-gpt4, 9000 examples
-        - supernatural-instructions, 69624 examples (same as paper with 100 ex/task more can be used)
-        - vicuna
+    2 ways to load dataset:
+    (recommend) 1. load online.
+    2. directly load dataset when 'dataset_name_or_path' is exists and not ready in this file (llm-toolkit).
     """
-    DATASETS_ARGS = {
-        'alpaca': ("tatsu-lab/alpaca", {}),
-        'alpaca-dummy': ("Lohse/alpaca-dummy", {}),
-        'alpaca-clean': ("yahma/alpaca-cleaned", {}),
-        'alpaca-gpt4': ("vicgalle/alpaca-gpt4", {}),
-        'flanv2': ("conceptofmind/FLAN_2022", {}),
-        'chip2': ("laion/OIG", {'data_files': 'unified_chip2.jsonl'}),
-        'self-instruct': ("yizhongw/self_instruct", {'name': 'self_instruct'}),
-        'hh-rlhf': ("Anthropic/hh-rlhf", {}),
-        'longform': ("akoksal/LongForm", {}),
-        'oasst1': ("timdettmers/openassistant-guanaco", {}),
-        'gsm8k': ("openai/gsm8k", {'name': "main"}),
-        'hellaswag': ("Rowan/hellaswag", {}),
-        'wikitext2': ("wikitext", {'name': "wikitext-2-raw-v1"}),
-        'e2e': ("GEM/e2e_nlg", {}),
-        'math': ("Lohse/math", {}),
-        'commonsense': ("Lohse/commonsense", {}),
-    }
-
-    FORMAT_FUNCTIONS = {
-        'input-output': lambda x: x,
-        'alpaca': preprocess_alpaca,
-        'alpaca-clean': preprocess_alpaca,
-        'alpaca-gpt4': preprocess_alpaca,
-        'alpaca-dummy': preprocess_alpaca,
-        'gsm8k': preprocess_gsm8k,
-        'hellaswag': preprocess_hellaswag,
-        'chip2': preprocess_chip2,
-        'self-instruct': preprocess_selfinstruct,
-        'hh-rlhf': preprocess_hhrlhf,
-        'oasst1': preprocess_oasst1,
-        'wikitext2': preprocess_wikitext2,
-        'e2e': preprocess_e2e,
-        'math': preprocess_math,
-        'commonsense': preprocess_commonsense,
-    }
-
-    def load_data(dataset_name, local_data_path=None):
-        """
-        3 ways to load dataset:
-        (recommend) 1. load online (local_data_path is not given).
-        2. load offline from json. *Note that not all datasets are avaliable in local json.
-        3. directly load dataset when 'dataset_path/dataset_name' is exists.
-        """
-        if dataset_name in DATASETS_ARGS:
-            dataset_info, kwargs = DATASETS_ARGS[dataset_name]
-            if local_data_path is None:
-                return load_dataset(dataset_info, **kwargs)
-            else:
-                return load_dataset('json', data_dir=os.path.join(local_data_path, dataset_name), **kwargs)
+    if dataset_name_or_path in DATASETS_ARGS:
+        dataset_info, kwargs = DATASETS_ARGS[dataset_name_or_path]
+        return load_dataset(dataset_info, **kwargs)
+    else:
+        print_rank_0(
+            f"The dataset {dataset_name_or_path} is not supported by llmtoolkit, use at your own risk.")
+        if os.path.exists(dataset_name_or_path):
+            try:
+                full_dataset = local_dataset(dataset_name_or_path)
+                return full_dataset
+            except:
+                raise ValueError(
+                    f"Error loading dataset '{dataset_name_or_path}'.")
         else:
-            print_rank_0(
-                f"The dataset {dataset_name} is not supported by llmtoolkit, use at your own risk.")
-            dataset_path = os.path.join(
-                "" if local_data_path is None else local_data_path, dataset_name)
-            if os.path.exists(dataset_path):
-                try:
-                    args.dataset_format = args.dataset_format if args.dataset_format else "input-output"
-                    full_dataset = local_dataset(dataset_path)
-                    return full_dataset
-                except:
-                    raise ValueError(
-                        f"Error loading dataset '{dataset_name}' from {dataset_path}")
-            else:
-                raise FileNotFoundError(
-                    f"Dataset '{dataset_name}' not found, the path {local_dataset_path} doesn't exist.")
+            raise FileNotFoundError(
+                f"Dataset '{dataset_name_or_path}' not found, the path {dataset_name_or_path} doesn't exist.")
 
-    def format_dataset(dataset_name, dataset_format, dataset):
-        if dataset_name in FORMAT_FUNCTIONS:
-            dataset = FORMAT_FUNCTIONS[dataset_name](dataset)
-        elif dataset_format in FORMAT_FUNCTIONS:
-            dataset = FORMAT_FUNCTIONS[dataset_format](dataset)
-        else:
+
+def format_dataset(dataset_name_or_path, dataset):
+    if dataset_name_or_path in FORMAT_FUNCTIONS:
+        dataset = FORMAT_FUNCTIONS[dataset_name_or_path](dataset)
+    else:
+        print_rank_0(f"dataset format method for {dataset_name_or_path} is not implemented, trying default input-output format.")
+        try:
+            dataset = FORMAT_FUNCTIONS["input-output"](dataset)
+        except:
             raise NotImplementedError(
-                f"Dataset '{dataset_name}' or dataset format '{dataset_format}' is not supported.")
-        return dataset
+                f"default input-output format has failed to format '{dataset_name_or_path}', please check the structure of '{dataset_name_or_path}'.")
+    return dataset
 
-    dataset = load_data(args.dataset, args.local_data_path)
-    dataset = format_dataset(args.dataset, args.dataset_format, dataset)
+
+def build_data_module(
+    tokenizer: transformers.PreTrainedTokenizer,
+    dataset_name_or_path,
+    args: DataArguments = None,
+    ) -> Dict:
+    if args is None:
+        args = DataArguments(dataset_name_or_path=dataset_name_or_path)
+
+    dataset = load_data(dataset_name_or_path)
+    dataset = format_dataset(dataset_name_or_path, dataset)
 
     if 'eval' in dataset:
         eval_dataset = dataset['eval']
@@ -397,16 +378,10 @@ def build_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict
 
     if args.max_eval_samples is not None and len(eval_dataset) > args.max_eval_samples:
         eval_dataset = eval_dataset.select(range(args.max_eval_samples))
-    if args.group_by_length:
-        eval_dataset = eval_dataset.map(
-            lambda x: {'length': len(x['input']) + len(x['output'])})
 
     train_dataset = dataset['train']
     if args.max_train_samples is not None and len(train_dataset) > args.max_train_samples:
         train_dataset = train_dataset.select(range(args.max_train_samples))
-    if args.group_by_length:
-        train_dataset = train_dataset.map(
-            lambda x: {'length': len(x['input']) + len(x['output'])})
     for index in random.sample(range(len(train_dataset)), 3):
         print_rank_0(
             f"Sample {index} of the training set:\n{train_dataset[index]}.")
@@ -416,7 +391,6 @@ def build_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict
         source_max_len=args.source_max_len,
         target_max_len=args.target_max_len,
         train_on_source=args.train_on_source,
-        predict_with_generate=args.predict_with_generate,
         hard_padding=args.hard_padding,
     )
     return dict(
