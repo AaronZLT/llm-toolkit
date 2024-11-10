@@ -173,7 +173,7 @@ def infly_evaluate(task: str, model_name_or_path, peft_name_or_path: str = None)
     evaluator = Evaluator(strategy)
     
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
-    eval_dataset = build_data_module(tokenizer, task)["eval_dataset"].select(range(100))
+    eval_dataset = build_data_module(tokenizer, task)["eval_dataset"]
     prompts = list(eval_dataset['input'])
     prompt_to_golden = {item['input']: item['output'] for item in eval_dataset}
 
