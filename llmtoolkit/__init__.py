@@ -7,6 +7,7 @@ from .arguments import (
     TrainingArguments,
     GenerationArguments,
     get_args,
+    get_unique_key,
 )
 from .callbacks import (
     EmptycacheCallback,
@@ -38,6 +39,7 @@ from .load_and_save import (
 )
 from .train import (
     train,
+    train_cli,
 )
 from .train_no_trainer import (
     train_no_trainer,
@@ -54,7 +56,6 @@ from .utils import (
     get_world_size,
     print_rank_0,
     safe_dict2file,
-    get_unique_key,
     is_ipex_available,
     hardware_info,
 )

@@ -18,7 +18,7 @@ def export_memory_timeline_html(
 
     matplotlib_spec = importlib.util.find_spec("matplotlib")
     if matplotlib_spec is None:
-        print(
+        print_rank_0(
             "export_memory_timeline_html failed because matplotlib was not found."
         )
         return

@@ -60,7 +60,6 @@ def flexible_load(args):
         print_rank_0("LOADING QUANTIZED MODEL")
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
-            cache_dir=args.cache_dir,
             device_map=device_map,
             max_memory=max_memory,
             quantization_config=BitsAndBytesConfig(
@@ -82,7 +81,6 @@ def flexible_load(args):
         print_rank_0("LOADING UNQUANTIZED MODEL")
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
-            cache_dir=args.cache_dir,
             device_map=device_map,
             torch_dtype=(torch.float16 if args.fp16 else (
                 torch.bfloat16 if args.bf16 else torch.float32)),
@@ -168,6 +166,7 @@ def smart_tokenizer_and_embedding_resize(
         input_embeddings_data[-num_new_tokens:] = input_embeddings_avg
         output_embeddings_data[-num_new_tokens:] = output_embeddings_avg
 
+
 @rank_0
 def merge_and_save(model_name_or_path, peft_path, output_path):
     model = AutoModelForCausalLM.from_pretrained(model_name_or_path)
@@ -180,5 +179,3 @@ def merge_and_save(model_name_or_path, peft_path, output_path):
     tokenizer.save_pretrained(save_url)
     print_rank_0(f"Merged model has been successfully saved at {save_url}.")
     del model, tokenizer
-
-    

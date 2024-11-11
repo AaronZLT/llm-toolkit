@@ -22,16 +22,22 @@ from peft import (
 )
 from peft.tuners.lora import LoraLayer
 
+from .arguments import (
+    ModelArguments,
+    DataArguments,
+    TrainingArguments,
+)
 from .utils import (
     print_rank_0,
     is_ipex_available,
     require_lib,
+    timeit,
 )
 
 
-def find_all_linear_names(args, model):
-    linear_cls = bnb.nn.Linear4bit if args.bits == 4 else (
-        bnb.nn.Linear8bitLt if args.bits == 8 else torch.nn.Linear)
+def find_all_linear_names(model, bits):
+    linear_cls = bnb.nn.Linear4bit if bits == 4 else (
+        bnb.nn.Linear8bitLt if bits == 8 else torch.nn.Linear)
     conv1d_cls = Conv1D
     lora_module_names = set()
     for name, module in model.named_modules():
@@ -47,13 +53,13 @@ def find_all_linear_names(args, model):
 
     return list(lora_module_names)
 
-
-def peft_model(args, model):
+@timeit
+def peft_model(model, args: ModelArguments):
     if args.peft in ["lora", "lora-fa", "vera", "dora"]:
         attention_modules = ['query', 'q_proj', 'value',
                              'v_proj', 'key', 'k_proj', 'output', 'o_proj']
 
-        modules = find_all_linear_names(args, model)
+        modules = find_all_linear_names(model, args.bits)
 
         if args.lora_modules == "all":
             pass
@@ -80,7 +86,7 @@ def peft_model(args, model):
                 lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
-                init_lora_weights=args.init_lora_weights,
+                init_lora_weights=args.init_lora_weights if args.init_lora_weights is not None else True,
             )
             _peft_model = get_peft_model(model, config)
         elif args.peft == "lora-fa":
@@ -91,7 +97,7 @@ def peft_model(args, model):
                 lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
-                init_lora_weights=args.init_lora_weights,
+                init_lora_weights=args.init_lora_weights if args.init_lora_weights is not None else True,
             )
             _peft_model = get_peft_model(model, config)
             for name, param in _peft_model.named_parameters():
@@ -138,74 +144,54 @@ def peft_model(args, model):
     return _peft_model
 
 
-def get_accelerate_model(args, checkpoint_dir):
-    if args.flash_attn == True:
-        require_lib("flash-attn")
-        from .llama2_flashattn import (
-            replace_llama_attn_with_flash_attn,
-        )
-        print_rank_0("Use FLASH ATTENTION! Replacing......")
-        replace_llama_attn_with_flash_attn()
+def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArguments):
+    if model_args.flash_attn == True:
+        require_lib("flash_attn")
+        attn_implementation = "flash_attention_2"
+    else:
+        attn_implementation = "eager"
 
     if torch.cuda.is_available():
         n_gpus = torch.cuda.device_count()
     if is_ipex_available() and torch.xpu.is_available():
         n_gpus = torch.xpu.device_count()
 
-    max_memory = f'{args.max_memory_MB}MB'
-    max_memory = {i: max_memory for i in range(n_gpus)}
-    device_map = None
+    if not model_args.quant:
+        assert model_args.bits in [16, 32]
 
-    if args.device_map != None:
-        # if we are in a distributed setting, we need to set the device map and max memory per device
-        if os.environ.get('LOCAL_RANK') is not None:
-            local_rank = int(os.environ.get('LOCAL_RANK', '0'))
-            device_map = {'': local_rank}
-            max_memory = {'': max_memory[local_rank]}
-
-    if args.deepspeed != None:
-        print_rank_0("Using deepspeed, disabling device_map...")
-        device_map = None
-
-    if not args.quant:
-        assert args.bits in [16, 32]
-
-    print_rank_0(f'loading base model {args.model_name_or_path}...')
-    compute_dtype = (torch.float16 if args.fp16 else (
-        torch.bfloat16 if args.bf16 else torch.float32))
-    if args.quant:
+    print_rank_0(f'loading base model {model_args.model_name_or_path}...')
+    compute_dtype = (torch.float16 if training_args.fp16 else (
+        torch.bfloat16 if training_args.bf16 else torch.float32))
+    if model_args.quant:
         print_rank_0("LOADING QUANTIZED MODEL")
         model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path,
-            cache_dir=args.cache_dir,
-            device_map=device_map,
-            max_memory=max_memory,
+            model_args.model_name_or_path,
+            attn_implementation=attn_implementation,
             quantization_config=BitsAndBytesConfig(
-                load_in_4bit=args.bits == 4,
-                load_in_8bit=args.bits == 8,
+                load_in_4bit=model_args.bits == 4,
+                load_in_8bit=model_args.bits == 8,
                 llm_int8_threshold=6.0,
                 llm_int8_has_fp16_weight=False,
                 bnb_4bit_compute_dtype=compute_dtype,
-                bnb_4bit_use_double_quant=args.double_quant,
-                bnb_4bit_quant_type=args.quant_type,
+                bnb_4bit_use_double_quant=model_args.double_quant,
+                bnb_4bit_quant_type=model_args.quant_type,
             ),
-            torch_dtype=(torch.float16 if args.fp16 else (
-                torch.bfloat16 if args.bf16 else torch.float32)),
-            trust_remote_code=args.trust_remote_code,
-            use_auth_token=args.use_auth_token
+            torch_dtype=(torch.float16 if training_args.fp16 else (
+                torch.bfloat16 if training_args.bf16 else torch.float32)),
+            trust_remote_code=model_args.trust_remote_code,
+            use_auth_token=model_args.use_auth_token
         )
     else:
         print_rank_0("LOADING UNQUANTIZED MODEL")
         model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path,
-            cache_dir=args.cache_dir,
-            device_map=device_map,
-            torch_dtype=(torch.float16 if args.fp16 else (
-                torch.bfloat16 if args.bf16 else torch.float32)),
-            trust_remote_code=args.trust_remote_code,
-            use_auth_token=args.use_auth_token
+            model_args.model_name_or_path,
+            attn_implementation=attn_implementation,
+            torch_dtype=(torch.float16 if training_args.fp16 else (
+                torch.bfloat16 if training_args.bf16 else torch.float32)),
+            trust_remote_code=model_args.trust_remote_code,
+            use_auth_token=model_args.use_auth_token
         )
-    if compute_dtype == torch.float16 and args.bits == 4:
+    if compute_dtype == torch.float16 and model_args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print_rank_0('='*80)
             print_rank_0(
@@ -220,10 +206,10 @@ def get_accelerate_model(args, checkpoint_dir):
     # setattr(model, 'model_parallel', True)
     # setattr(model, 'is_parallelizable', True)
 
-    model.config.torch_dtype = (torch.float16 if args.fp16 else (
-        torch.bfloat16 if args.bf16 else torch.float32))
+    model.config.torch_dtype = (torch.float16 if training_args.fp16 else (
+        torch.bfloat16 if training_args.bf16 else torch.float32))
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
     tokenizer.padding_side = 'right'
 
     # add special tokens
@@ -249,26 +235,26 @@ def get_accelerate_model(args, checkpoint_dir):
     print_rank_0(f"bos_token: {tokenizer.bos_token}")
     print_rank_0(f"unk_token: {tokenizer.unk_token}")
 
-    if args.quant:
+    if model_args.quant:
         model = prepare_model_for_kbit_training(
-            model, use_gradient_checkpointing=args.gradient_checkpointing)
+            model, use_gradient_checkpointing=training_args.gradient_checkpointing)
 
-    if args.peft:
-        model = peft_model(args, model)
+    if model_args.peft:
+        model = peft_model(model, model_args)
 
-        if args.flash_attn or args.deepspeed != None:
+        if model_args.flash_attn or training_args.deepspeed != None:
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
                     module = module.to(
-                        torch.float16 if args.fp16 else torch.bfloat16)
+                        torch.float16 if training_args.fp16 else torch.bfloat16)
                 if 'norm' in name:
                     module = module.to(
-                        torch.float16 if args.fp16 else torch.bfloat16)
+                        torch.float16 if training_args.fp16 else torch.bfloat16)
                 if 'lm_head' in name or 'embed_tokens' in name:
                     if hasattr(module, 'weight'):
                         if module.weight.dtype == torch.float32:
                             module = module.to(
-                                torch.float16 if args.fp16 else torch.bfloat16)
+                                torch.float16 if training_args.fp16 else torch.bfloat16)
 
     if hasattr(model, "enable_input_require_grads"):
         model.enable_input_require_grads()
@@ -319,6 +305,8 @@ def smart_tokenizer_and_embedding_resize(
 
         input_embeddings_data[-num_new_tokens:] = input_embeddings_avg
         output_embeddings_data[-num_new_tokens:] = output_embeddings_avg
+
+# deprecate
 
 
 def get_last_checkpoint(checkpoint_dir):

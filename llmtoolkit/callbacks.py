@@ -13,6 +13,7 @@ from .utils import (
     rank_0,
     plot_xy,
     save_fig,
+    gsi,
 )
 
 
@@ -145,7 +146,6 @@ class StepInfoCallback(transformers.TrainerCallback):
         # Dump the profile result to profiler.txt
         profile_dict = {}
         profile_dict["key"] = self.key
-        profile_dict["#gpus"] = get_world_size()
         profile_dict["batch_size"] = state.train_batch_size
         profile_dict["trainable_parameter"] = self.trainable_param
         profile_dict["step_time (s)"] = mean_step_time
@@ -164,36 +164,9 @@ class StepInfoCallback(transformers.TrainerCallback):
         train_fig = plot_xy(list(train_log.keys()), list(
             train_log.values()), "train loss")
         save_fig(train_fig, os.path.join(self.output_dir, "train.png"))
-        safe_dict2file(profile_dict, os.path.join(
-            self.output_dir, "profiler.txt"))
 
+        gsi.info.update(profile_dict)
+        gsi.dump(self.output_dir)
 
-class SavePeftModelCallback(transformers.TrainerCallback):
-    def save_model(self, args, state, kwargs):
-        print_rank_0('Saving PEFT checkpoint...')
-        if state.best_model_checkpoint is not None:
-            checkpoint_folder = os.path.join(
-                state.best_model_checkpoint, "adapter_model")
-        else:
-            checkpoint_folder = os.path.join(
-                args.output_dir, f"{PREFIX_CHECKPOINT_DIR}-{state.global_step}")
-
-        peft_model_path = os.path.join(checkpoint_folder, "adapter_model")
-        kwargs["model"].save_pretrained(peft_model_path)
-
-        pytorch_model_path = os.path.join(
-            checkpoint_folder, "pytorch_model.bin")
-        if os.path.exists(pytorch_model_path):
-            os.remove(pytorch_model_path)
-
-    def on_save(self, args, state, control, **kwargs):
-        self.save_model(args, state, kwargs)
-        return control
-
-    def on_train_end(self, args, state, control, **kwargs):
-        def touch(fname, times=None):
-            with open(fname, 'a'):
-                os.utime(fname, times)
-
-        touch(join(args.output_dir, 'completed'))
-        self.save_model(args, state, kwargs)
+        # safe_dict2file(profile_dict, os.path.join(
+        #     self.output_dir, "profiler.txt"))

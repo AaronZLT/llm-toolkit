@@ -140,7 +140,7 @@ class GSM8KEvaluationStrategy(EvaluationStrategy):
             try:
                 return float(result)
             except ValueError:
-                print(f"'{result}' is invalid thus cannot be transformed into numbers")
+                print_rank_0(f"'{result}' is invalid thus cannot be transformed into numbers")
                 return 0
 
 class Evaluator:

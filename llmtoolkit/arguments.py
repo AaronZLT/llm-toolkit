@@ -6,8 +6,8 @@ import transformers
 
 from .utils import (
     print_rank_0,
-    get_unique_key,
 )
+
 
 @dataclass
 class ModelArguments:
@@ -23,7 +23,7 @@ class ModelArguments:
             "help": "Whether to merge the adapter into base mode after loaded."}
     )
     trust_remote_code: Optional[bool] = field(
-        default=False,
+        default=True,
         metadata={
             "help": "Enable unpickling of arbitrary code in AutoModelForCausalLM#from_pretrained."}
     )
@@ -53,10 +53,10 @@ class ModelArguments:
         default=1.0,
         metadata={"help": "Lora layers percentage from 0-1. Default is 1.0, i.e., 100% lora layers will be applied. *FOR TEST ONLY DO NOT USE*"}
     )
-    init_lora_weights: Optional[str] = field(
-        default="kaiming_uniform_",
+    init_lora_weights: str = field(
+        default=None,
         metadata={
-            "help": "The method to init LoRA_A. Choose from [ones_, normal_, kaiming_uniform_]. *FOR TEST ONLY DO NOT USE*"}
+            "help": "The method to init LoRA_A. Choose from [pissa, olora]."}
     )
     lora_modules: Optional[str] = field(
         default="all",
@@ -85,7 +85,7 @@ class ModelArguments:
     bits: int = field(
         default=16,
         metadata={
-            "help": "How many bits to use. In general we use bf16 training, here the bits is 16."}
+            "help": "How many bits to use. In general we use --bf16 training, here the bits is 16."}
     )
 
 
@@ -139,6 +139,7 @@ class DataArguments:
             "help": "Whether to train on the input in addition to the target text. **Mostly used in pretraining."}
     )
 
+
 @dataclass
 class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     cache_dir: Optional[str] = field(
@@ -147,11 +148,6 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     adam8bit: bool = field(
         default=False,
         metadata={"help": "Use 8-bit adam."}
-    )
-    max_memory_MB: int = field(
-        default=80000,
-        metadata={
-            "help": "Free memory per gpu. E.g., for H100 this should be set to 80000."}
     )
     report_to: str = field(
         default='none',
@@ -211,9 +207,6 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=30, metadata={"help": 'profiler_warmup_step. Default = 30 steps.'})
     profiler_step_log: bool = field(default=False, metadata={
                                     "help": 'Profile with detailed log (every step): train/eval loss, etc. Default = False'})
-    device_map: str = field(default=None, metadata={
-        "help": 'device map. Set to "auto" if enabled. Default is None.'})
-
     debug_mode: bool = field(
         default=False,
         metadata={"help": "Turn on debug mode."}
@@ -252,6 +245,7 @@ class GenerationArguments:
     length_penalty: Optional[float] = field(default=1.0)
     no_repeat_ngram_size: Optional[int] = field(default=0)
 
+
 def get_args():
     hfparser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments, GenerationArguments))
@@ -259,33 +253,44 @@ def get_args():
         return_remaining_strings=True)
     training_args.generation_config = transformers.GenerationConfig(
         **vars(generation_args))
+    key = get_unique_key(model_args, data_args, training_args)
+
+    # run_name is post inited in Transformers if self.run_name is None: self.run_name = self.output_dir
+    if training_args.run_name == training_args.output_dir:
+        print_rank_0(
+            f"Set run_name from '{training_args.output_dir}' to '{key}' since run_name is not specified")
+        training_args.run_name = key
+
+    if training_args.output_dir == "default_output":
+        print_rank_0(
+            f"Set output_dir from 'default_output' to '{key}' since output_dir is not specified")
+        training_args.output_dir = key
+
+    print_rank_0('\n'.join(f"{key}: {value}" for key, value in vars(argparse.Namespace(
+        **vars(model_args), **vars(data_args), **vars(training_args))).items()))
+
+    return model_args, data_args, training_args
+
+
+def get_unique_key(model_args: ModelArguments, data_args: DataArguments, training_args: TrainingArguments):
     args = argparse.Namespace(
         **vars(model_args), **vars(data_args), **vars(training_args)
     )
-
-    # run_name is post inited in Transformers: if self.run_name is None: self.run_name = self.output_dir
-    if args.run_name == args.output_dir:
-        print_rank_0(
-            f"Set run_name from '{args.output_dir}' to '{get_unique_key(args)}'")
-        args.run_name = get_unique_key(args)
-        training_args.run_name = get_unique_key(args)
-
-    if args.output_dir == "default_output":
-        print_rank_0(
-            f"Set output_dir from 'default_output' to '{get_unique_key(args)}'")
-        args.output_dir = get_unique_key(args)
-        training_args.output_dir = get_unique_key(args)
-
-    if args.deepspeed:
-        training_args.distributed_state.distributed_type = DistributedType.DEEPSPEED
-
-    print_rank_0(args)
-
-    args_dict = {
-        "model_args": model_args,
-        "data_args": data_args,
-        "training_args": training_args,
-        "generation_args": generation_args,
-        "extra_args": extra_args
+    config_dict = {
+        "model": args.model_name_or_path.split('/')[-1],
+        "dataset": args.dataset_name_or_path.split('/')[-1],
+        "bs": f"bs{args.per_device_train_batch_size}",
+        "seq": f"seq{args.source_max_len + args.target_max_len}",
+        "lr": f"lr{args.learning_rate}",
+        "peft": args.peft,
+        "lora_r": f"r{args.lora_r}" if args.peft else None,
+        "flash-attn": "flash-attn" if args.flash_attn else None,
+        "checkpointing": "checkpointing" if args.gradient_checkpointing else None,
+        "quant": "quant" if args.quant else None,
+        "compute_type": "fp16" if args.fp16 else "bf16" if args.bf16 else "fp32",
+        "deepspeed": args.deepspeed,
     }
-    return args, args_dict
+    key = '.'.join(value for value in config_dict.values()
+                   if value is not None)
+
+    return key

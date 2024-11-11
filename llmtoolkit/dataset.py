@@ -85,7 +85,7 @@ class DataCollatorForCausalLM(object):
         return data_dict
 
 
-"""
+r"""
 Below is the train prompt and preprocess functions for generating train dataset.
 Most of the training prompts are aligned with lm-eval, which is the same as 🤗 Open LLM Leaderboard.
 """
@@ -344,7 +344,8 @@ def format_dataset(dataset_name_or_path, dataset):
     if dataset_name_or_path in FORMAT_FUNCTIONS:
         dataset = FORMAT_FUNCTIONS[dataset_name_or_path](dataset)
     else:
-        print_rank_0(f"dataset format method for {dataset_name_or_path} is not implemented, trying default input-output format.")
+        print_rank_0(
+            f"dataset format method for {dataset_name_or_path} is not implemented, trying default input-output format.")
         try:
             dataset = FORMAT_FUNCTIONS["input-output"](dataset)
         except:
@@ -357,7 +358,7 @@ def build_data_module(
     tokenizer: transformers.PreTrainedTokenizer,
     dataset_name_or_path,
     args: DataArguments = None,
-    ) -> Dict:
+) -> Dict:
     if args is None:
         args = DataArguments(dataset_name_or_path=dataset_name_or_path)
 
@@ -375,13 +376,15 @@ def build_data_module(
             test_size=args.eval_dataset_size, shuffle=True, seed=42
         )
         eval_dataset = dataset['test']
-
     if args.max_eval_samples is not None and len(eval_dataset) > args.max_eval_samples:
         eval_dataset = eval_dataset.select(range(args.max_eval_samples))
+    eval_dataset = eval_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
 
     train_dataset = dataset['train']
     if args.max_train_samples is not None and len(train_dataset) > args.max_train_samples:
         train_dataset = train_dataset.select(range(args.max_train_samples))
+    train_dataset = train_dataset.map(
+                lambda x: {'length': len(x['input']) + len(x['output'])})
     for index in random.sample(range(len(train_dataset)), 3):
         print_rank_0(
             f"Sample {index} of the training set:\n{train_dataset[index]}.")

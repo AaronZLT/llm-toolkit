@@ -18,7 +18,6 @@ from .utils import (
     rank_0,
     print_rank_0,
     safe_dict2file,
-    get_unique_key,
     is_ipex_available,
     hardware_info,
 )

@@ -1,6 +1,7 @@
 import os
 import gc
 import json
+import time
 import threading
 import importlib
 import datetime
@@ -14,6 +15,7 @@ from collections import Counter
 import matplotlib.pyplot as plt
 
 import torch
+from pynvml import *
 
 
 def deprecated(func):
@@ -133,6 +135,7 @@ def plot_xy(x, y, title):
 def save_fig(fig, path):
     fig.savefig(path)
 
+
 @rank_0
 def require_lib(pylib: str):
     import importlib.util
@@ -140,47 +143,6 @@ def require_lib(pylib: str):
     if pylib_spec is None:
         raise FileNotFoundError(
             f"{pylib} is required but not installed.")
-
-def get_unique_key(args):
-    # model, dataset, hyperparam
-    model = args.model_name_or_path.split('/')[-1]
-    gpu_number = get_world_size()
-    bs = args.per_device_train_batch_size
-    seq = args.source_max_len + args.target_max_len
-    lr = args.learning_rate
-    dataset = args.dataset
-    lr_sche = args.lr_scheduler_type
-
-    # peft
-    if args.peft:
-        if args.peft in ["lora", "lora-fa"]:
-            peft = f"{args.peft}-r{args.lora_r}-a{int(args.lora_alpha)}-dropout{args.lora_dropout}-percent{args.lora_percent}-module{args.lora_modules}"
-        else:
-            peft = f"{args.peft}"
-    else:
-        peft = "-"
-
-    # flash attention
-    flash = "flash" if args.flash_attn else "-"
-
-    # recomputation
-    recomputation = "recompute" if args.gradient_checkpointing else "-"
-
-    # quant
-    quant = "quant" if args.quant else "-"
-
-    # datatype
-    datatype = "fp16" if args.fp16 else "bf16" if args.bf16 else "-"
-
-    # zero
-    zero = "-" if not args.deepspeed else "zero3" if '3' in args.deepspeed else "zero2" if '2' in args.deepspeed else "-"
-
-    # offload
-    offload = "-" if not args.deepspeed else "off" if 'off' in args.deepspeed else "-"
-
-    key = f"{model}-dataset_{dataset}-gpus{gpu_number}-bs{bs}-seq{seq}-lr{lr}-{lr_sche}-{peft}-{flash}-{recomputation}-{quant}-{datatype}-{zero}-{offload}"
-
-    return key
 
 
 def is_ipex_available():
@@ -211,6 +173,7 @@ class hardware_info:
     def __init__(self) -> None:
         self.n_gpus = 0
         self.gpu_info = {}
+        self.gpu_info_detailed = []
         self.n_xpus = 0
         self.xpu_info = {}
         if (torch.cuda.is_available()):
@@ -219,8 +182,9 @@ class hardware_info:
             self.get_xpu_info()
         self.summary()
 
-    def get_gpu_info(self):
-        self.gpu_info = []
+    def get_gpu_info(self) -> dict:
+        self.gpu_info = {}
+        self.gpu_info_detailed = []
         nvmlInit()
         self.n_gpus = torch.cuda.device_count()
         for i in range(self.n_gpus):
@@ -229,18 +193,21 @@ class hardware_info:
 
             name = torch.cuda.get_device_name(i)
 
-            total_memory = int(info.total / 1024 / 1024)
-            free_memory = int(info.free / 1024 / 1024)
-            used_memory = int(info.used / 1024 / 1024)
+            total_memory = int(info.total / 1024 / 1024 / 1024)
+            free_memory = int(info.free / 1024 / 1024 / 1024)
+            used_memory = int(info.used / 1024 / 1024 / 1024)
 
-            self.gpu_info.append({
+            self.gpu_info_detailed.append({
                 "name": name,
                 "total_memory": total_memory,
                 "free_memory": free_memory,
                 "used_memory": used_memory,
             })
-
+        self.gpu_info["GPU"] = self.gpu_info_detailed[0]["name"]
+        self.gpu_info["Num of GPU"] = self.n_gpus
+        self.gpu_info["Memory per GPU (GB)"] = self.gpu_info_detailed[0]["total_memory"]
         nvmlShutdown()
+        return self.gpu_info
 
     # TODO
     def get_xpu_info(self):
@@ -250,10 +217,37 @@ class hardware_info:
     def summary(self):
         print_rank_0(f"Detected {self.n_gpus} GPU(s)")
         gpu_tuple_list = [(gpu['name'], gpu['total_memory'])
-                          for gpu in self.gpu_info]
+                          for gpu in self.gpu_info_detailed]
         counter = Counter(gpu_tuple_list)
         for gpu, count in counter.items():
             name, memory = gpu
             print_rank_0(f"{count} x {name}, Memory: {memory}")
 
         print_rank_0(f"Detected {self.n_xpus} XPU(s)")
+
+
+class global_system_info:
+    def __init__(self):
+        self.info = {
+            "hardware":{},
+            "overhead (s)":{},
+        }
+
+    def dump(self, output_dir):
+        safe_dict2file(self.info, os.path.join(output_dir, "system_info.txt"))
+
+
+gsi = global_system_info()
+gsi.info["hardware"] = hardware_info().gpu_info
+
+def timeit(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print_rank_0(
+            f"{func.__name__} executed in {end_time - start_time:.4f} seconds")
+        gsi.info["overhead (s)"][func.__name__] = end_time - start_time
+        return result
+    return wrapper

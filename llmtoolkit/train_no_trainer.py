@@ -23,6 +23,7 @@ from .arguments import (
     DataArguments,
     TrainingArguments,
     GenerationArguments,
+    get_unique_key,
 )
 from .dataset import (
     build_data_module,
@@ -34,7 +35,6 @@ from .model import (
 )
 from .utils import (
     print_rank_0,
-    get_unique_key,
     hardware_info,
     get_rank,
 )
@@ -43,26 +43,30 @@ from .utils import (
 r'''
 For now, memory_tracer only print on rank_0
 '''
+
+
 class MemoryTracer():
     def __init__(self, args):
-        self.memory=[0]
-        self.memory_allocated=[0]
+        self.memory = [0]
+        self.memory_allocated = [0]
         self.total_mem = 0
         self.time_stamp = []
-        self.name=[]
+        self.name = []
         self.device_rank = get_rank()
-        self.enable_trace = args.debug_mode==True
+        self.enable_trace = args.debug_mode == True
         self.output_dir = args.output_dir
-        print_rank_0(f"Memory tracer successfully created on rank-{self.device_rank}")
+        print_rank_0(
+            f"Memory tracer successfully created on rank-{self.device_rank}")
 
     def trace(self):
         if not self.enable_trace:
             return
-        mem = round(torch.cuda.memory_allocated(self.device_rank)/1024/1024/1024, 3)
+        mem = round(torch.cuda.memory_allocated(
+            self.device_rank)/1024/1024/1024, 3)
         self.memory_allocated.append(mem)
-        self.memory.append(round(mem-sum(self.memory),3))
+        self.memory.append(round(mem-sum(self.memory), 3))
 
-    def save(self,data):
+    def save(self, data):
         fig, ax = plt.subplots()
         ax.plot(data, marker='o')
 
@@ -72,7 +76,7 @@ class MemoryTracer():
         ax.set_xlabel('stamp')
         ax.set_ylabel('Memory (GB)')
         ax.grid(True)
-        plt.savefig(os.path.join(self.output_dir,"memory_alloc_stamp"))
+        plt.savefig(os.path.join(self.output_dir, "memory_alloc_stamp"))
 
     def print_alloc_mem(self):
         print_rank_0("+++++++++++++++++ Memory Trace START +++++++++++++++++")
@@ -86,6 +90,7 @@ class MemoryTracer():
         for index, value in enumerate(self.memory):
             print_rank_0(f"{index} Memory on rank-{self.device_rank}: {value}")
         print_rank_0("+++++++++++++++++ Memory Trace END +++++++++++++++++")
+
 
 def train_no_trainer():
     r'''
@@ -139,7 +144,7 @@ def train_no_trainer():
         Accelerator(log_with=args.report_to,
                     project_dir=args.output_dir) if with_tracking else Accelerator()
     )
-    memory_tracer=MemoryTracer(args)
+    memory_tracer = MemoryTracer(args)
 
     torch_overhead = torch.randn(1).cuda()
     memory_tracer.trace()
@@ -165,10 +170,10 @@ def train_no_trainer():
     model.config.use_cache = False
     print_rank_0('model loaded')
     print_rank_0(model)
-    
+
     trainable_param, all_param, trainable_rate = print_trainable_parameters(
         model, True)
-    
+
     memory_tracer.trace()
 
     # for now we only create dataloaders for train_dataset and eval_dataset
@@ -344,9 +349,9 @@ def train_no_trainer():
                     progress_bar.update(1)
                     completed_steps += 1
                     if accelerator.is_local_main_process:
-                        progress_bar.write(f"Step-{step} training loss: {loss.detach().float()}")
+                        progress_bar.write(
+                            f"Step-{step} training loss: {loss.detach().float()}")
                     memory_tracer.trace()
-
 
                 if should_save(step):
                     output_dir = f"step_{completed_steps}"
@@ -363,5 +368,5 @@ def train_no_trainer():
 
     if with_tracking:
         accelerator.end_training()
-    
+
     memory_tracer.print_alloc_mem()

@@ -6,7 +6,7 @@ from .utils import (
 
 
 def single_inference(model, tokenizer, input: str, task_type: str = "CausalLM", source_max_len: str = 512, target_max_len: str = 512):
-    if task_type== 'CausalLM':
+    if task_type == 'CausalLM':
         inputs = tokenizer(
             input + " ",
             return_tensors="pt",
@@ -38,6 +38,7 @@ def single_inference(model, tokenizer, input: str, task_type: str = "CausalLM", 
 
     return pred_text
 
+
 def vllm_inference(prompts: list, model_name_or_path: str, peft_name_or_path: str = None, max_lora_rank: int = 128, source_max_len: int = 512, target_max_len: int = 512) -> list:
     require_lib("vllm")
     from vllm import LLM, SamplingParams
@@ -49,13 +50,16 @@ def vllm_inference(prompts: list, model_name_or_path: str, peft_name_or_path: st
     results = []
 
     if peft_name_or_path:
-        llm = LLM(model=model_name_or_path, enable_lora=True, max_lora_rank=max_lora_rank)
-        outputs = llm.generate(prompts, sampling_params, lora_request=LoRARequest(peft_name_or_path, 1, peft_name_or_path))
+        llm = LLM(model=model_name_or_path, enable_lora=True,
+                  max_lora_rank=max_lora_rank)
+        outputs = llm.generate(prompts, sampling_params, lora_request=LoRARequest(
+            peft_name_or_path, 1, peft_name_or_path))
     else:
         llm = LLM(model=model_name_or_path)
         outputs = llm.generate(prompts, sampling_params)
 
     for output in outputs:
-        results.append({"prompt":output.prompt, "response":output.outputs[0].text})
+        results.append(
+            {"prompt": output.prompt, "response": output.outputs[0].text})
 
     return results
