@@ -18,13 +18,11 @@ from peft import (
     PrefixTuningConfig,
     PromptTuningConfig,
     get_peft_model,
-    PeftModel,
 )
 from peft.tuners.lora import LoraLayer
 
 from .arguments import (
     ModelArguments,
-    DataArguments,
     TrainingArguments,
 )
 from .utils import (
@@ -102,7 +100,7 @@ def peft_model(model, args: ModelArguments):
             _peft_model = get_peft_model(model, config)
             for name, param in _peft_model.named_parameters():
                 if "lora_A" in name:
-                    param.requires_grad = False
+                    param.requires_grad_(False)
         elif args.peft == "dora":
             config = LoraConfig(
                 r=args.lora_r,
@@ -145,7 +143,7 @@ def peft_model(model, args: ModelArguments):
 
 
 def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArguments):
-    if model_args.flash_attn == True:
+    if model_args.flash_attn is True:
         require_lib("flash_attn")
         attn_implementation = "flash_attention_2"
     else:
@@ -158,6 +156,8 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
 
     if not model_args.quant:
         assert model_args.bits in [16, 32]
+    else:
+        assert model_args.bits in [8, 4, 2, 1]
 
     print_rank_0(f'loading base model {model_args.model_name_or_path}...')
     compute_dtype = (torch.float16 if training_args.fp16 else (
@@ -167,6 +167,7 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
         model = AutoModelForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             attn_implementation=attn_implementation,
+            device_map="auto",
             quantization_config=BitsAndBytesConfig(
                 load_in_4bit=model_args.bits == 4,
                 load_in_8bit=model_args.bits == 8,
@@ -175,6 +176,7 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
                 bnb_4bit_compute_dtype=compute_dtype,
                 bnb_4bit_use_double_quant=model_args.double_quant,
                 bnb_4bit_quant_type=model_args.quant_type,
+                bnb_4bit_quant_storage=model_args.quant_storage,
             ),
             torch_dtype=(torch.float16 if training_args.fp16 else (
                 torch.bfloat16 if training_args.bf16 else torch.float32)),
@@ -186,6 +188,7 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
         model = AutoModelForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             attn_implementation=attn_implementation,
+            device_map="auto",
             torch_dtype=(torch.float16 if training_args.fp16 else (
                 torch.bfloat16 if training_args.bf16 else torch.float32)),
             trust_remote_code=model_args.trust_remote_code,
@@ -242,7 +245,7 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     if model_args.peft:
         model = peft_model(model, model_args)
 
-        if model_args.flash_attn or training_args.deepspeed != None:
+        if model_args.flash_attn or training_args.deepspeed is not None:
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
                     module = module.to(

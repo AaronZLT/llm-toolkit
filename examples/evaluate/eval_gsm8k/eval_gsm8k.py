@@ -1,3 +1,5 @@
+import os
+
 import transformers
 from transformers import AutoTokenizer
 
@@ -9,27 +11,21 @@ from llmtoolkit import (
     safe_dict2file,
 )
 
-ckpts = [
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-1e-5/checkpoint-7473",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-1e-5/checkpoint-14946",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-3e-5/checkpoint-7473",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-3e-5/checkpoint-14946",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-5e-5/checkpoint-7473",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-5e-5/checkpoint-14946",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-7e-5/checkpoint-7473",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-7e-5/checkpoint-14946",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-9e-5/checkpoint-7473",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-9e-5/checkpoint-14946",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-9e-6/checkpoint-7473",
-    "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-9e-6/checkpoint-14946",
-]
+def find_adapter_model_paths(root_dir):
+    matching_paths = []
+    for dirpath, _, filenames in os.walk(root_dir):
+        if 'adapter_model.safetensors' in filenames:
+            matching_paths.append(dirpath)
+    return matching_paths
+
+ckpts = find_adapter_model_paths('/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/')
+ckpts = ["/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-1e-5/checkpoint-14946"]
 
 for ckpt in ckpts:
-    results = {}
     acc = infly_evaluate("gsm8k", "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf", ckpt)
-    result["model"] = "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf"
-    result["lora"] = ckpt
-    result["task"] = "gsm8k"
-    result["accuracy"] = acc
-
-safe_dict2file(results, "eval_result.txt")
+    results = {}
+    results["model"] = "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf"
+    results["lora"] = ckpt
+    results["task"] = "gsm8k"
+    results["accuracy"] = acc
+    safe_dict2file(results, "eval_result.txt")

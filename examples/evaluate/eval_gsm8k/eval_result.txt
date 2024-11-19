@@ -12,3 +12,147 @@
     "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-9e-6/checkpoint-7473": 0.3419257012888552,
     "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/gsm8k-9e-6/checkpoint-14946": 0.3858984078847612
 }
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/power-gsm8k-7e-6",
+    "task": "gsm8k",
+    "accuracy": 0.3646702047005307
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/power-gsm8k-7e-6/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.3297952994692949
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/power-gsm8k-7e-6/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.35633055344958303
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/power-gsm8k-9e-6",
+    "task": "gsm8k",
+    "accuracy": 0.3752843062926459
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/power-gsm8k-9e-6/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.34723275208491283
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/power-gsm8k-9e-6/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.3646702047005307
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-9e-5",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-9e-5/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-9e-5/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-5e-5",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-5e-5/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-5e-5/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-9e-5",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-9e-5/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-9e-5/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-1e-4",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-1e-4/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/olora-gsm8k-1e-4/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-1e-5",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-1e-5/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-1e-5/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-5e-5",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-5e-5/checkpoint-7473",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}
+{
+    "model": "/hpc2hdd/home/lzhang330/ssd_workspace/models/llama-2-7b-chat-hf",
+    "lora": "/hpc2hdd/home/lzhang330/llm-toolkit/tmp/gsm8k-power/power-pissa-olora/pissa-gsm8k-1e-5/checkpoint-14946",
+    "task": "gsm8k",
+    "accuracy": 0.0
+}

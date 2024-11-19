@@ -90,6 +90,12 @@ def train(model, tokenizer, train_dataset, eval_dataset, data_collator, training
             trainer.save_metrics("train", metrics)
             trainer.save_state()
             trainer.save_model()
+            '''
+            in case you want to save the base model
+            '''
+            # model = trainer.model.base_model
+            # print_rank_0(model)
+            # model.save_pretrained(training_args.output_dir)
         all_metrics.update(metrics)
     if training_args.do_eval:
         print_rank_0("*** Evaluate ***")
