@@ -24,26 +24,28 @@ from .utils import (
 def flexible_load(args):
     if args.flash_attn == True:
         import importlib.util
+
         flashattn_spec = importlib.util.find_spec("flash-attn")
         if flashattn_spec is None:
             raise FileNotFoundError(
-                "You can not use flash_attn now since flash-attn was not installed.")
+                "You can not use flash_attn now since flash-attn was not installed."
+            )
 
     if torch.cuda.is_available():
         n_gpus = torch.cuda.device_count()
     if is_ipex_available() and torch.xpu.is_available():
         n_gpus = torch.xpu.device_count()
 
-    max_memory = f'{args.max_memory_MB}MB'
+    max_memory = f"{args.max_memory_MB}MB"
     max_memory = {i: max_memory for i in range(n_gpus)}
     device_map = None
 
     if args.device_map != None:
         # if we are in a distributed setting, we need to set the device map and max memory per device
-        if os.environ.get('LOCAL_RANK') is not None:
-            local_rank = int(os.environ.get('LOCAL_RANK', '0'))
-            device_map = {'': local_rank}
-            max_memory = {'': max_memory[local_rank]}
+        if os.environ.get("LOCAL_RANK") is not None:
+            local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+            device_map = {"": local_rank}
+            max_memory = {"": max_memory[local_rank]}
 
     if args.deepspeed != None:
         print_rank_0("Using deepspeed, disabling device_map...")
@@ -52,9 +54,10 @@ def flexible_load(args):
     if not args.quant:
         assert args.bits in [16, 32]
 
-    print_rank_0(f'loading base model {args.model_name_or_path}...')
-    compute_dtype = (torch.float16 if args.fp16 else (
-        torch.bfloat16 if args.bf16 else torch.float32))
+    print_rank_0(f"loading base model {args.model_name_or_path}...")
+    compute_dtype = (
+        torch.float16 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)
+    )
 
     if args.quant:
         print_rank_0("LOADING QUANTIZED MODEL")
@@ -71,8 +74,11 @@ def flexible_load(args):
                 bnb_4bit_use_double_quant=args.double_quant,
                 bnb_4bit_quant_type=args.quant_type,
             ),
-            torch_dtype=(torch.float16 if args.fp16 else (
-                torch.bfloat16 if args.bf16 else torch.float32)),
+            torch_dtype=(
+                torch.float16
+                if args.fp16
+                else (torch.bfloat16 if args.bf16 else torch.float32)
+            ),
             trust_remote_code=args.trust_remote_code,
             use_auth_token=args.use_auth_token,
             attn_implementation="flash_attention_2" if args.flash_attn else "eager",
@@ -82,49 +88,63 @@ def flexible_load(args):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
             device_map=device_map,
-            torch_dtype=(torch.float16 if args.fp16 else (
-                torch.bfloat16 if args.bf16 else torch.float32)),
+            torch_dtype=(
+                torch.float16
+                if args.fp16
+                else (torch.bfloat16 if args.bf16 else torch.float32)
+            ),
             trust_remote_code=args.trust_remote_code,
             use_auth_token=args.use_auth_token,
             attn_implementation="flash_attention_2" if args.flash_attn else "eager",
         )
     if compute_dtype == torch.float16 and args.bits == 4:
         if torch.cuda.is_bf16_supported():
-            print_rank_0('='*80)
+            print_rank_0("=" * 80)
             print_rank_0(
-                'Your GPU supports bfloat16, you can accelerate training with the argument --bf16')
-            print_rank_0('='*80)
+                "Your GPU supports bfloat16, you can accelerate training with the argument --bf16"
+            )
+            print_rank_0("=" * 80)
 
-    if compute_dtype == torch.float16 and (is_ipex_available() and torch.xpu.is_available()):
+    if compute_dtype == torch.float16 and (
+        is_ipex_available() and torch.xpu.is_available()
+    ):
         compute_dtype = torch.bfloat16
-        print_rank_0(
-            'Intel XPU does not support float16 yet, so switching to bfloat16')
+        print_rank_0("Intel XPU does not support float16 yet, so switching to bfloat16")
 
     # setattr(model, 'model_parallel', True)
     # setattr(model, 'is_parallelizable', True)
 
-    model.config.torch_dtype = (torch.float16 if args.fp16 else (
-        torch.bfloat16 if args.bf16 else torch.float32))
+    model.config.torch_dtype = (
+        torch.float16 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
-    tokenizer.padding_side = 'right'
+    tokenizer.padding_side = "right"
 
     # add special tokens
     # 1. add pad_token if pad_token is None, as unk_token or eos_token if unk_token is None
     # 2. add unk_token if unk_token is None, as pad_token or eos_token if pad_token is None
     special_tokens_dict = dict()
     if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = tokenizer.unk_token if tokenizer.unk_token is not None else tokenizer.convert_ids_to_tokens(
-            model.config.eos_token_id)
+        special_tokens_dict["pad_token"] = (
+            tokenizer.unk_token
+            if tokenizer.unk_token is not None
+            else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+        )
     if tokenizer.eos_token is None:
         special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(
-            model.config.eos_token_id)
+            model.config.eos_token_id
+        )
     if tokenizer.bos_token is None:
         special_tokens_dict["bos_token"] = tokenizer.convert_ids_to_tokens(
-            model.config.bos_token_id)
+            model.config.bos_token_id
+        )
     if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = tokenizer.pad_token if tokenizer.pad_token is not None else tokenizer.convert_ids_to_tokens(
-            model.config.eos_token_id)
+        special_tokens_dict["unk_token"] = (
+            tokenizer.pad_token
+            if tokenizer.pad_token is not None
+            else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+        )
 
     smart_tokenizer_and_embedding_resize(special_tokens_dict, tokenizer, model)
     print_rank_0(f"pad_token: {tokenizer.pad_token}")
@@ -158,10 +178,12 @@ def smart_tokenizer_and_embedding_resize(
         input_embeddings_data = model.get_input_embeddings().weight.data
         output_embeddings_data = model.get_output_embeddings().weight.data
 
-        input_embeddings_avg = input_embeddings_data[:-
-                                                     num_new_tokens].mean(dim=0, keepdim=True)
-        output_embeddings_avg = output_embeddings_data[:-
-                                                       num_new_tokens].mean(dim=0, keepdim=True)
+        input_embeddings_avg = input_embeddings_data[:-num_new_tokens].mean(
+            dim=0, keepdim=True
+        )
+        output_embeddings_avg = output_embeddings_data[:-num_new_tokens].mean(
+            dim=0, keepdim=True
+        )
 
         input_embeddings_data[-num_new_tokens:] = input_embeddings_avg
         output_embeddings_data[-num_new_tokens:] = output_embeddings_avg

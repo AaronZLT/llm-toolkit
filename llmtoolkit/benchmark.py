@@ -1,6 +1,6 @@
-'''
+"""
 not for now
-'''
+"""
 
 
 class benchmark_manager:

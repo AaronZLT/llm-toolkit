@@ -12,10 +12,12 @@ def poweriter(input, p_buffer, q_buffer, iter):
     # return q_buffer[0] @ p_buffer[0].permute((0, 1, 3, 2))
     return p_buffer, q_buffer
 
+
 def make_poweriter():
     pass
 
-class PowerLayer():
+
+class PowerLayer:
     def __init__():
         pass
 

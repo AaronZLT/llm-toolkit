@@ -34,20 +34,22 @@ class DataCollatorForCausalLM(object):
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         # Extract elements
         sources = [
-            f"{self.tokenizer.bos_token}{example['input']}" for example in instances]
+            f"{self.tokenizer.bos_token}{example['input']}" for example in instances
+        ]
         targets = [
-            f"{example['output']}{self.tokenizer.eos_token}" for example in instances]
+            f"{example['output']}{self.tokenizer.eos_token}" for example in instances
+        ]
         # Tokenize
         tokenized_sources_with_prompt = self.tokenizer(
             sources,
-            padding='max_length' if self.hard_padding else False,
+            padding="max_length" if self.hard_padding else False,
             max_length=self.source_max_len,
             truncation=True,
             add_special_tokens=False,
         )
         tokenized_targets = self.tokenizer(
             targets,
-            padding='max_length' if self.hard_padding else False,
+            padding="max_length" if self.hard_padding else False,
             max_length=self.target_max_len,
             truncation=True,
             add_special_tokens=False,
@@ -56,32 +58,33 @@ class DataCollatorForCausalLM(object):
         input_ids = []
         labels = []
         for tokenized_source, tokenized_target in zip(
-            tokenized_sources_with_prompt['input_ids'],
-            tokenized_targets['input_ids']
+            tokenized_sources_with_prompt["input_ids"], tokenized_targets["input_ids"]
         ):
-            input_ids.append(torch.tensor(
-                tokenized_source + tokenized_target))
+            input_ids.append(torch.tensor(tokenized_source + tokenized_target))
             if not self.train_on_source:
                 labels.append(
-                    torch.tensor([IGNORE_INDEX for _ in range(
-                        len(tokenized_source))] + copy.deepcopy(tokenized_target))
+                    torch.tensor(
+                        [IGNORE_INDEX for _ in range(len(tokenized_source))]
+                        + copy.deepcopy(tokenized_target)
+                    )
                 )
             else:
-                labels.append(torch.tensor(copy.deepcopy(
-                    tokenized_source + tokenized_target)))
+                labels.append(
+                    torch.tensor(copy.deepcopy(tokenized_source + tokenized_target))
+                )
 
         # Apply padding
         input_ids = pad_sequence(
-            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id)
-        labels = pad_sequence(
-            labels, batch_first=True, padding_value=IGNORE_INDEX)
+            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
+        )
+        labels = pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
 
         data_dict = {
-            'input_ids': input_ids,
-            'attention_mask': input_ids.ne(self.tokenizer.pad_token_id),
+            "input_ids": input_ids,
+            "attention_mask": input_ids.ne(self.tokenizer.pad_token_id),
         }
         if labels is not None:
-            data_dict['labels'] = labels
+            data_dict["labels"] = labels
         return data_dict
 
 
@@ -89,10 +92,12 @@ r"""
 Below is the train prompt and preprocess functions for generating train dataset.
 Most of the training prompts are aligned with lm-eval, which is the same as 🤗 Open LLM Leaderboard.
 """
+
+
 @dataclass
 class SFTPrompt:
-    default_input: str = ("Question: {question}\nAnswer: ")
-    default_output: str = ("{answer}\n\n")
+    default_input: str = "Question: {question}\nAnswer: "
+    default_output: str = "{answer}\n\n"
     alpaca_input: str = (
         "Below is an instruction that describes a task, paired with an input that provides further context. "
         "Write a response that appropriately completes the request.\n\n"
@@ -103,7 +108,7 @@ class SFTPrompt:
         "Write a response that appropriately completes the request.\n\n"
         "### Instruction:\n{instruction}\n\n#### Response: "
     )
-    truthfulqa_6shot: str = ('\
+    truthfulqa_6shot: str = "\
         Q: What is human life expectancy in the United States?\n\
         A: Human life expectancy in the United States is 78 years.\n\n\
         Q: Who was president of the United States in 1955?\n\
@@ -116,26 +121,26 @@ class SFTPrompt:
         A: Telescopes use lenses or mirrors to focus light and make objects appear closer.\n\n\
         Q: Where were the 1992 Olympics held?\n\
         A: The 1992 Olympics were held in Barcelona, Spain.\
-        \n\nQ: {question}\nA:')
-    math_input: str = ("Question: {instruction}\nAnswer: ")
-    math_output: str = ("{output}\n\n")
+        \n\nQ: {question}\nA:"
+    math_input: str = "Question: {instruction}\nAnswer: "
+    math_output: str = "{output}\n\n"
 
 
 def extract_super_natural_instructions_data(examples, extract_reformulations=False):
     out = {
-        'input': [],
-        'output': [],
+        "input": [],
+        "output": [],
     }
     print_rank_0(examples)
     for instance in examples:
-        out['input'].append(instance['input'])
-        out['output'].append(instance['output'])
+        out["input"].append(instance["input"])
+        out["output"].append(instance["output"])
     if extract_reformulations:
-        for example_reformulations in examples['reformulations']:
+        for example_reformulations in examples["reformulations"]:
             if example_reformulations is not None:
                 for instance in example_reformulations:
-                    out['input'].append(instance['instruction_with_input'])
-                    out['output'].append(instance['output'])
+                    out["input"].append(instance["instruction_with_input"])
+                    out["output"].append(instance["output"])
     print_rank_0(out)
     return out
 
@@ -146,7 +151,8 @@ def preprocess_alpaca(dataset: datasets.Dataset) -> datasets.Dataset:
             prompt_format = SFTPrompt.alpaca_input
         else:
             prompt_format = SFTPrompt.alpaca_noinput
-        return {'input': prompt_format.format(**example)}
+        return {"input": prompt_format.format(**example)}
+
     return dataset.map(_preprocess_doc)
 
 
@@ -154,7 +160,11 @@ def preprocess_gsm8k(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
         prompt_format_input = SFTPrompt.default_input
         prompt_format_output = SFTPrompt.default_output
-        return {'input': prompt_format_input.format(**example), 'output': prompt_format_output.format(**example)}
+        return {
+            "input": prompt_format_input.format(**example),
+            "output": prompt_format_output.format(**example),
+        }
+
     return dataset.map(_preprocess_doc)
 
 
@@ -162,7 +172,11 @@ def preprocess_truthfulqa_mc1(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
         prompt_format_input = SFTPrompt.default_input
         prompt_format_output = SFTPrompt.default_output
-        return {'input': prompt_format_input.format(**example), 'output': prompt_format_output.format(**example)}
+        return {
+            "input": prompt_format_input.format(**example),
+            "output": prompt_format_output.format(**example),
+        }
+
     return dataset.map(_preprocess_doc)
 
 
@@ -191,8 +205,7 @@ def preprocess_hellaswag(dataset: datasets.Dataset) -> datasets.Dataset:
             new_dataset.append(data_slice)
 
     dataset = dataset.map(_process_doc)
-    new_dataset = Dataset.from_list(
-        new_dataset).train_test_split(test_size=0.2)
+    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
     return new_dataset
 
 
@@ -205,33 +218,43 @@ def preprocess_wikitext2(dataset: datasets.Dataset) -> datasets.Dataset:
             data_slice["input"] = example["text"]
             data_slice["output"] = ""
             new_dataset.append(data_slice)
+
     dataset.map(_preprocess_doc)
-    new_dataset = Dataset.from_list(
-        new_dataset).train_test_split(test_size=0.2)
+    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
     return new_dataset
 
 
 def preprocess_e2e(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {'input': example['meaning_representation'], 'output': example['target']}
+        return {"input": example["meaning_representation"], "output": example["target"]}
+
     return dataset.map(_preprocess_doc)
 
 
 def preprocess_math(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {'input': SFTPrompt.math_input.format(**example), 'output': SFTPrompt.math_output.format(**example)}
+        return {
+            "input": SFTPrompt.math_input.format(**example),
+            "output": SFTPrompt.math_output.format(**example),
+        }
+
     return dataset.map(_preprocess_doc)
 
 
 def preprocess_commonsense(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {'input': example['instruction'], 'output': example['output']}
+        return {"input": example["instruction"], "output": example["output"]}
+
     return dataset.map(_preprocess_doc)
 
 
 def preprocess_chip2(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {'input': example['text'].split('\n<bot>: ')[0].replace('<human>: ', ''), 'output': example['text'].split('\n<bot>: ')[1]}
+        return {
+            "input": example["text"].split("\n<bot>: ")[0].replace("<human>: ", ""),
+            "output": example["text"].split("\n<bot>: ")[1],
+        }
+
     return dataset.map(_preprocess_doc)
 
 
@@ -243,19 +266,22 @@ def preprocess_selfinstruct(dataset: datasets.Dataset) -> datasets.Dataset:
 
 def preprocess_hhrlhf(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {'input': '', 'output': example['chosen']}
+        return {"input": "", "output": example["chosen"]}
+
     return dataset.map(_preprocess_doc)
 
 
 def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {'input': '', 'output': example['text']}
+        return {"input": "", "output": example["text"]}
+
     return dataset.map(_preprocess_doc)
 
 
 def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {'input': example['inputs'], 'output': example['targets']}
+        return {"input": example["inputs"], "output": example["targets"]}
+
     return dataset.map(_preprocess_doc)
 
 
@@ -264,51 +290,50 @@ Make dataset and collator for supervised fine-tuning.
 Datasets are expected to have the following columns: { `input`, `output` }
 """
 DATASETS_ARGS = {
-    'alpaca': ("tatsu-lab/alpaca", {}),
-    'alpaca-dummy': ("Lohse/alpaca-dummy", {}),
-    'alpaca-clean': ("yahma/alpaca-cleaned", {}),
-    'alpaca-gpt4': ("vicgalle/alpaca-gpt4", {}),
-    'flanv2': ("conceptofmind/FLAN_2022", {}),
-    'chip2': ("laion/OIG", {'data_files': 'unified_chip2.jsonl'}),
-    'self-instruct': ("yizhongw/self_instruct", {'name': 'self_instruct'}),
-    'hh-rlhf': ("Anthropic/hh-rlhf", {}),
-    'longform': ("akoksal/LongForm", {}),
-    'oasst1': ("timdettmers/openassistant-guanaco", {}),
-    'gsm8k': ("openai/gsm8k", {'name': "main"}),
-    'hellaswag': ("Rowan/hellaswag", {}),
-    'wikitext2': ("wikitext", {'name': "wikitext-2-raw-v1"}),
-    'e2e': ("GEM/e2e_nlg", {}),
-    'math': ("Lohse/math", {}),
-    'commonsense': ("Lohse/commonsense", {}),
+    "alpaca": ("tatsu-lab/alpaca", {}),
+    "alpaca-dummy": ("Lohse/alpaca-dummy", {}),
+    "alpaca-clean": ("yahma/alpaca-cleaned", {}),
+    "alpaca-gpt4": ("vicgalle/alpaca-gpt4", {}),
+    "flanv2": ("conceptofmind/FLAN_2022", {}),
+    "chip2": ("laion/OIG", {"data_files": "unified_chip2.jsonl"}),
+    "self-instruct": ("yizhongw/self_instruct", {"name": "self_instruct"}),
+    "hh-rlhf": ("Anthropic/hh-rlhf", {}),
+    "longform": ("akoksal/LongForm", {}),
+    "oasst1": ("timdettmers/openassistant-guanaco", {}),
+    "gsm8k": ("openai/gsm8k", {"name": "main"}),
+    "hellaswag": ("Rowan/hellaswag", {}),
+    "wikitext2": ("wikitext", {"name": "wikitext-2-raw-v1"}),
+    "e2e": ("GEM/e2e_nlg", {}),
+    "math": ("Lohse/math", {}),
+    "commonsense": ("Lohse/commonsense", {}),
 }
 
 FORMAT_FUNCTIONS = {
-    'input-output': lambda x: x,
-    'alpaca': preprocess_alpaca,
-    'alpaca-clean': preprocess_alpaca,
-    'alpaca-gpt4': preprocess_alpaca,
-    'alpaca-dummy': preprocess_alpaca,
-    'gsm8k': preprocess_gsm8k,
-    'hellaswag': preprocess_hellaswag,
-    'chip2': preprocess_chip2,
-    'self-instruct': preprocess_selfinstruct,
-    'hh-rlhf': preprocess_hhrlhf,
-    'oasst1': preprocess_oasst1,
-    'wikitext2': preprocess_wikitext2,
-    'e2e': preprocess_e2e,
-    'math': preprocess_math,
-    'commonsense': preprocess_commonsense,
+    "input-output": lambda x: x,
+    "alpaca": preprocess_alpaca,
+    "alpaca-clean": preprocess_alpaca,
+    "alpaca-gpt4": preprocess_alpaca,
+    "alpaca-dummy": preprocess_alpaca,
+    "gsm8k": preprocess_gsm8k,
+    "hellaswag": preprocess_hellaswag,
+    "chip2": preprocess_chip2,
+    "self-instruct": preprocess_selfinstruct,
+    "hh-rlhf": preprocess_hhrlhf,
+    "oasst1": preprocess_oasst1,
+    "wikitext2": preprocess_wikitext2,
+    "e2e": preprocess_e2e,
+    "math": preprocess_math,
+    "commonsense": preprocess_commonsense,
 }
 
 
 def local_dataset(dataset_name):
-    if dataset_name.endswith('.json') or dataset_name.endswith('.jsonl'):
+    if dataset_name.endswith(".json") or dataset_name.endswith(".jsonl"):
         full_dataset = Dataset.from_json(path_or_paths=dataset_name)
-    elif dataset_name.endswith('.csv'):
+    elif dataset_name.endswith(".csv"):
         full_dataset = Dataset.from_pandas(pd.read_csv(dataset_name))
-    elif dataset_name.endswith('.tsv'):
-        full_dataset = Dataset.from_pandas(
-            pd.read_csv(dataset_name, delimiter='\t'))
+    elif dataset_name.endswith(".tsv"):
+        full_dataset = Dataset.from_pandas(pd.read_csv(dataset_name, delimiter="\t"))
     else:
         raise ValueError(f"Unsupported dataset format: {dataset_name}")
 
@@ -327,17 +352,18 @@ def load_data(dataset_name_or_path):
         return load_dataset(dataset_info, **kwargs)
     else:
         print_rank_0(
-            f"The dataset {dataset_name_or_path} is not supported by llmtoolkit, use at your own risk.")
+            f"The dataset {dataset_name_or_path} is not supported by llmtoolkit, use at your own risk."
+        )
         if os.path.exists(dataset_name_or_path):
             try:
                 full_dataset = local_dataset(dataset_name_or_path)
                 return full_dataset
             except:
-                raise ValueError(
-                    f"Error loading dataset '{dataset_name_or_path}'.")
+                raise ValueError(f"Error loading dataset '{dataset_name_or_path}'.")
         else:
             raise FileNotFoundError(
-                f"Dataset '{dataset_name_or_path}' not found, the path {dataset_name_or_path} doesn't exist.")
+                f"Dataset '{dataset_name_or_path}' not found, the path {dataset_name_or_path} doesn't exist."
+            )
 
 
 def format_dataset(dataset_name_or_path, dataset):
@@ -345,12 +371,14 @@ def format_dataset(dataset_name_or_path, dataset):
         dataset = FORMAT_FUNCTIONS[dataset_name_or_path](dataset)
     else:
         print_rank_0(
-            f"dataset format method for {dataset_name_or_path} is not implemented, trying default input-output format.")
+            f"dataset format method for {dataset_name_or_path} is not implemented, trying default input-output format."
+        )
         try:
             dataset = FORMAT_FUNCTIONS["input-output"](dataset)
         except:
             raise NotImplementedError(
-                f"default input-output format has failed to format '{dataset_name_or_path}', please check the structure of '{dataset_name_or_path}'.")
+                f"default input-output format has failed to format '{dataset_name_or_path}', please check the structure of '{dataset_name_or_path}'."
+            )
     return dataset
 
 
@@ -365,29 +393,35 @@ def build_data_module(
     dataset = load_data(dataset_name_or_path)
     dataset = format_dataset(dataset_name_or_path, dataset)
 
-    if 'eval' in dataset:
-        eval_dataset = dataset['eval']
-    elif 'test' in dataset:
-        eval_dataset = dataset['test']
+    if "eval" in dataset:
+        eval_dataset = dataset["eval"]
+    elif "test" in dataset:
+        eval_dataset = dataset["test"]
     else:
         print_rank_0(
-            'Splitting train dataset in train and validation according to `eval_dataset_size`')
+            "Splitting train dataset in train and validation according to `eval_dataset_size`"
+        )
         dataset = dataset["train"].train_test_split(
             test_size=args.eval_dataset_size, shuffle=True, seed=42
         )
-        eval_dataset = dataset['test']
+        eval_dataset = dataset["test"]
     if args.max_eval_samples is not None and len(eval_dataset) > args.max_eval_samples:
         eval_dataset = eval_dataset.select(range(args.max_eval_samples))
-    eval_dataset = eval_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
+    eval_dataset = eval_dataset.map(
+        lambda x: {"length": len(x["input"]) + len(x["output"])}
+    )
 
-    train_dataset = dataset['train']
-    if args.max_train_samples is not None and len(train_dataset) > args.max_train_samples:
+    train_dataset = dataset["train"]
+    if (
+        args.max_train_samples is not None
+        and len(train_dataset) > args.max_train_samples
+    ):
         train_dataset = train_dataset.select(range(args.max_train_samples))
     train_dataset = train_dataset.map(
-                lambda x: {'length': len(x['input']) + len(x['output'])})
+        lambda x: {"length": len(x["input"]) + len(x["output"])}
+    )
     for index in random.sample(range(len(train_dataset)), 3):
-        print_rank_0(
-            f"Sample {index} of the training set:\n{train_dataset[index]}.")
+        print_rank_0(f"Sample {index} of the training set:\n{train_dataset[index]}.")
 
     data_collator = DataCollatorForCausalLM(
         tokenizer=tokenizer,
@@ -400,5 +434,5 @@ def build_data_module(
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         predict_dataset=eval_dataset,
-        data_collator=data_collator
+        data_collator=data_collator,
     )

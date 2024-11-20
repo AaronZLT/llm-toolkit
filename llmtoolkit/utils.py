@@ -22,14 +22,18 @@ def deprecated(func):
     """This is a decorator which can be used to mark functions
     as deprecated. It will result in a warning being emitted
     when the function is used."""
+
     @functools.wraps(func)
     def new_func(*args, **kwargs):
-        warnings.simplefilter('always', DeprecationWarning)  # turn off filter
-        warnings.warn("Call to deprecated function {}.".format(func.__name__),
-                      category=DeprecationWarning,
-                      stacklevel=2)
-        warnings.simplefilter('default', DeprecationWarning)  # reset filter
+        warnings.simplefilter("always", DeprecationWarning)  # turn off filter
+        warnings.warn(
+            "Call to deprecated function {}.".format(func.__name__),
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        warnings.simplefilter("default", DeprecationWarning)  # reset filter
         return func(*args, **kwargs)
+
     return new_func
 
 
@@ -39,8 +43,11 @@ def get_rank():
 
 
 def get_world_size():
-    world_size = 1 if not torch.distributed.is_initialized(
-    ) else torch.distributed.get_world_size()
+    world_size = (
+        1
+        if not torch.distributed.is_initialized()
+        else torch.distributed.get_world_size()
+    )
     return world_size
 
 
@@ -53,6 +60,7 @@ def rank_0(func):
         #     print(f"Skipping function {func.__name__} on rank {rank}")
         #     # You can return a default value if needed, for example:
         #     # return None
+
     return wrapper
 
 
@@ -64,6 +72,7 @@ def run_once(func):
         if not has_run:
             has_run = True
             return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -86,7 +95,7 @@ def safe_dict2file(dictionary: dict, filename: str):
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        with open(filename, 'a') as json_file:
+        with open(filename, "a") as json_file:
             json.dump(dictionary, json_file, indent=4)
             json_file.write("\n")
 
@@ -98,7 +107,7 @@ def safe_list2file(l: List, filename):
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        with open(filename, 'a') as file:
+        with open(filename, "a") as file:
             for i in l:
                 file.write(i + "\n")
 
@@ -106,7 +115,7 @@ def safe_list2file(l: List, filename):
 def safe_readjson(filename):
     lock = threading.Lock()
     with lock:
-        with open(filename, 'r') as json_file:
+        with open(filename, "r") as json_file:
             d = json.load(json_file)
     return d
 
@@ -122,7 +131,7 @@ def plot_xy(x, y, title):
         raise ValueError("length x != length y")
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(x, y, marker='o')
+    ax.plot(x, y, marker="o")
     ax.set_title(title)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
@@ -139,23 +148,26 @@ def save_fig(fig, path):
 @rank_0
 def require_lib(pylib: str):
     import importlib.util
+
     pylib_spec = importlib.util.find_spec(pylib)
     if pylib_spec is None:
-        raise FileNotFoundError(
-            f"{pylib} is required but not installed.")
+        raise FileNotFoundError(f"{pylib} is required but not installed.")
 
 
 def is_ipex_available():
     def get_major_and_minor_from_version(full_version):
-        return str(version.parse(full_version).major) + "." + str(version.parse(full_version).minor)
+        return (
+            str(version.parse(full_version).major)
+            + "."
+            + str(version.parse(full_version).minor)
+        )
 
     _torch_version = metadata.version("torch")
     if importlib.util.find_spec("intel_extension_for_pytorch") is None:
         return False
     _ipex_version = "N/A"
     try:
-        _ipex_version = importlib.metadata.version(
-            "intel_extension_for_pytorch")
+        _ipex_version = importlib.metadata.version("intel_extension_for_pytorch")
     except importlib.metadata.PackageNotFoundError:
         return False
     torch_major_and_minor = get_major_and_minor_from_version(_torch_version)
@@ -176,7 +188,7 @@ class hardware_info:
         self.gpu_info_detailed = []
         self.n_xpus = 0
         self.xpu_info = {}
-        if (torch.cuda.is_available()):
+        if torch.cuda.is_available():
             self.get_gpu_info()
         if is_ipex_available() and torch.xpu.is_available():
             self.get_xpu_info()
@@ -197,12 +209,14 @@ class hardware_info:
             free_memory = int(info.free / 1024 / 1024 / 1024)
             used_memory = int(info.used / 1024 / 1024 / 1024)
 
-            self.gpu_info_detailed.append({
-                "name": name,
-                "total_memory": total_memory,
-                "free_memory": free_memory,
-                "used_memory": used_memory,
-            })
+            self.gpu_info_detailed.append(
+                {
+                    "name": name,
+                    "total_memory": total_memory,
+                    "free_memory": free_memory,
+                    "used_memory": used_memory,
+                }
+            )
         self.gpu_info["GPU"] = self.gpu_info_detailed[0]["name"]
         self.gpu_info["Num of GPU"] = self.n_gpus
         self.gpu_info["Memory per GPU (GB)"] = self.gpu_info_detailed[0]["total_memory"]
@@ -216,8 +230,9 @@ class hardware_info:
 
     def summary(self):
         print_rank_0(f"Detected {self.n_gpus} GPU(s)")
-        gpu_tuple_list = [(gpu['name'], gpu['total_memory'])
-                          for gpu in self.gpu_info_detailed]
+        gpu_tuple_list = [
+            (gpu["name"], gpu["total_memory"]) for gpu in self.gpu_info_detailed
+        ]
         counter = Counter(gpu_tuple_list)
         for gpu, count in counter.items():
             name, memory = gpu
@@ -229,8 +244,8 @@ class hardware_info:
 class global_system_info:
     def __init__(self):
         self.info = {
-            "hardware":{},
-            "overhead (s)":{},
+            "hardware": {},
+            "overhead (s)": {},
         }
 
     def dump(self, output_dir):
@@ -240,14 +255,15 @@ class global_system_info:
 gsi = global_system_info()
 gsi.info["hardware"] = hardware_info().gpu_info
 
+
 def timeit(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
         result = func(*args, **kwargs)
         end_time = time.time()
-        print_rank_0(
-            f"{func.__name__} executed in {end_time - start_time:.4f} seconds")
+        print_rank_0(f"{func.__name__} executed in {end_time - start_time:.4f} seconds")
         gsi.info["overhead (s)"][func.__name__] = end_time - start_time
         return result
+
     return wrapper

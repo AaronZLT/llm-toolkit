@@ -34,68 +34,89 @@ from .utils import (
 
 
 def find_all_linear_names(model, bits):
-    linear_cls = bnb.nn.Linear4bit if bits == 4 else (
-        bnb.nn.Linear8bitLt if bits == 8 else torch.nn.Linear)
+    linear_cls = (
+        bnb.nn.Linear4bit
+        if bits == 4
+        else (bnb.nn.Linear8bitLt if bits == 8 else torch.nn.Linear)
+    )
     conv1d_cls = Conv1D
     lora_module_names = set()
     for name, module in model.named_modules():
         if isinstance(module, linear_cls) or isinstance(module, conv1d_cls):
-            names = name.split('.')
+            names = name.split(".")
             lora_module_names.add(names[0] if len(names) == 1 else names[-1])
 
-    if 'lm_head' in lora_module_names:
-        lora_module_names.remove('lm_head')
+    if "lm_head" in lora_module_names:
+        lora_module_names.remove("lm_head")
 
-    if 'gate' in lora_module_names:
-        lora_module_names.remove('gate')
+    if "gate" in lora_module_names:
+        lora_module_names.remove("gate")
 
     return list(lora_module_names)
+
 
 @timeit
 def peft_model(model, args: ModelArguments):
     if args.peft in ["lora", "lora-fa", "vera", "dora"]:
-        attention_modules = ['query', 'q_proj', 'value',
-                             'v_proj', 'key', 'k_proj', 'output', 'o_proj']
+        attention_modules = [
+            "query",
+            "q_proj",
+            "value",
+            "v_proj",
+            "key",
+            "k_proj",
+            "output",
+            "o_proj",
+        ]
 
         modules = find_all_linear_names(model, args.bits)
 
         if args.lora_modules == "all":
             pass
         elif args.lora_modules == "attention":
-            modules = [s for s in modules if any(
-                module in s for module in attention_modules)]
+            modules = [
+                s for s in modules if any(module in s for module in attention_modules)
+            ]
         elif args.lora_modules == "mlp":
-            modules = [s for s in modules if all(
-                module not in s for module in attention_modules)]
+            modules = [
+                s
+                for s in modules
+                if all(module not in s for module in attention_modules)
+            ]
         else:
             target_modules = args.lora_modules.split(",")
             for m in target_modules:
                 if m not in modules:
                     raise ValueError(
-                        f"You must choose your lora modules from {modules}.")
+                        f"You must choose your lora modules from {modules}."
+                    )
             modules = target_modules
-        print_rank_0(f'adding LoRA modules to {modules}')
+        print_rank_0(f"adding LoRA modules to {modules}")
 
         if args.peft == "lora":
             config = LoraConfig(
                 r=args.lora_r,
-                lora_alpha=2*args.lora_r,
+                lora_alpha=2 * args.lora_r,
                 target_modules=modules,
                 lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
-                init_lora_weights=args.init_lora_weights if args.init_lora_weights is not None else True,
+                init_lora_weights=args.init_lora_weights
+                if args.init_lora_weights is not None
+                else True,
             )
             _peft_model = get_peft_model(model, config)
         elif args.peft == "lora-fa":
             config = LoraConfig(
                 r=args.lora_r,
-                lora_alpha=2*args.lora_r,
+                lora_alpha=2 * args.lora_r,
                 target_modules=modules,
                 lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
-                init_lora_weights=args.init_lora_weights if args.init_lora_weights is not None else True,
+                init_lora_weights=args.init_lora_weights
+                if args.init_lora_weights is not None
+                else True,
             )
             _peft_model = get_peft_model(model, config)
             for name, param in _peft_model.named_parameters():
@@ -105,7 +126,7 @@ def peft_model(model, args: ModelArguments):
             config = LoraConfig(
                 r=args.lora_r,
                 use_dora=True,
-                lora_alpha=2*args.lora_r,
+                lora_alpha=2 * args.lora_r,
                 target_modules=modules,
                 lora_dropout=args.lora_dropout,
                 bias="none",
@@ -113,10 +134,7 @@ def peft_model(model, args: ModelArguments):
             )
             _peft_model = get_peft_model(model, config)
         elif args.peft == "vera":
-            config = VeraConfig(
-                r=args.lora_r,
-                target_modules=modules
-            )
+            config = VeraConfig(r=args.lora_r, target_modules=modules)
             _peft_model = get_peft_model(model, config)
     elif args.peft == "prefix":
         config = PrefixTuningConfig(
@@ -125,11 +143,13 @@ def peft_model(model, args: ModelArguments):
         )
         _peft_model = get_peft_model(model, config)
     elif args.peft == "prompt":
-        config = PromptTuningConfig(task_type="CAUSAL_LM",
-                                    prompt_tuning_init="TEXT",
-                                    prompt_tuning_init_text="Below is an instruction that describes a task. Write a response.",
-                                    num_virtual_tokens=40,
-                                    tokenizer_name_or_path=args.model_name_or_path)
+        config = PromptTuningConfig(
+            task_type="CAUSAL_LM",
+            prompt_tuning_init="TEXT",
+            prompt_tuning_init_text="Below is an instruction that describes a task. Write a response.",
+            num_virtual_tokens=40,
+            tokenizer_name_or_path=args.model_name_or_path,
+        )
         _peft_model = get_peft_model(model, config)
     elif args.peft == "embedding":
         _peft_model = model
@@ -159,9 +179,12 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     else:
         assert model_args.bits in [8, 4, 2, 1]
 
-    print_rank_0(f'loading base model {model_args.model_name_or_path}...')
-    compute_dtype = (torch.float16 if training_args.fp16 else (
-        torch.bfloat16 if training_args.bf16 else torch.float32))
+    print_rank_0(f"loading base model {model_args.model_name_or_path}...")
+    compute_dtype = (
+        torch.float16
+        if training_args.fp16
+        else (torch.bfloat16 if training_args.bf16 else torch.float32)
+    )
     if model_args.quant:
         print_rank_0("LOADING QUANTIZED MODEL")
         model = AutoModelForCausalLM.from_pretrained(
@@ -178,10 +201,13 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
                 bnb_4bit_quant_type=model_args.quant_type,
                 bnb_4bit_quant_storage=model_args.quant_storage,
             ),
-            torch_dtype=(torch.float16 if training_args.fp16 else (
-                torch.bfloat16 if training_args.bf16 else torch.float32)),
+            torch_dtype=(
+                torch.float16
+                if training_args.fp16
+                else (torch.bfloat16 if training_args.bf16 else torch.float32)
+            ),
             trust_remote_code=model_args.trust_remote_code,
-            use_auth_token=model_args.use_auth_token
+            use_auth_token=model_args.use_auth_token,
         )
     else:
         print_rank_0("LOADING UNQUANTIZED MODEL")
@@ -189,48 +215,64 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
             model_args.model_name_or_path,
             attn_implementation=attn_implementation,
             device_map="auto",
-            torch_dtype=(torch.float16 if training_args.fp16 else (
-                torch.bfloat16 if training_args.bf16 else torch.float32)),
+            torch_dtype=(
+                torch.float16
+                if training_args.fp16
+                else (torch.bfloat16 if training_args.bf16 else torch.float32)
+            ),
             trust_remote_code=model_args.trust_remote_code,
-            use_auth_token=model_args.use_auth_token
+            use_auth_token=model_args.use_auth_token,
         )
     if compute_dtype == torch.float16 and model_args.bits == 4:
         if torch.cuda.is_bf16_supported():
-            print_rank_0('='*80)
+            print_rank_0("=" * 80)
             print_rank_0(
-                'Your GPU supports bfloat16, you can accelerate training with the argument --bf16')
-            print_rank_0('='*80)
+                "Your GPU supports bfloat16, you can accelerate training with the argument --bf16"
+            )
+            print_rank_0("=" * 80)
 
-    if compute_dtype == torch.float16 and (is_ipex_available() and torch.xpu.is_available()):
+    if compute_dtype == torch.float16 and (
+        is_ipex_available() and torch.xpu.is_available()
+    ):
         compute_dtype = torch.bfloat16
-        print_rank_0(
-            'Intel XPU does not support float16 yet, so switching to bfloat16')
+        print_rank_0("Intel XPU does not support float16 yet, so switching to bfloat16")
 
     # setattr(model, 'model_parallel', True)
     # setattr(model, 'is_parallelizable', True)
 
-    model.config.torch_dtype = (torch.float16 if training_args.fp16 else (
-        torch.bfloat16 if training_args.bf16 else torch.float32))
+    model.config.torch_dtype = (
+        torch.float16
+        if training_args.fp16
+        else (torch.bfloat16 if training_args.bf16 else torch.float32)
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
-    tokenizer.padding_side = 'right'
+    tokenizer.padding_side = "right"
 
     # add special tokens
     # 1. add pad_token if pad_token is None, as unk_token or eos_token if unk_token is None
     # 2. add unk_token if unk_token is None, as pad_token or eos_token if pad_token is None
     special_tokens_dict = dict()
     if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = tokenizer.unk_token if tokenizer.unk_token is not None else tokenizer.convert_ids_to_tokens(
-            model.config.eos_token_id)
+        special_tokens_dict["pad_token"] = (
+            tokenizer.unk_token
+            if tokenizer.unk_token is not None
+            else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+        )
     if tokenizer.eos_token is None:
         special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(
-            model.config.eos_token_id)
+            model.config.eos_token_id
+        )
     if tokenizer.bos_token is None:
         special_tokens_dict["bos_token"] = tokenizer.convert_ids_to_tokens(
-            model.config.bos_token_id)
+            model.config.bos_token_id
+        )
     if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = tokenizer.pad_token if tokenizer.pad_token is not None else tokenizer.convert_ids_to_tokens(
-            model.config.eos_token_id)
+        special_tokens_dict["unk_token"] = (
+            tokenizer.pad_token
+            if tokenizer.pad_token is not None
+            else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
+        )
 
     smart_tokenizer_and_embedding_resize(special_tokens_dict, tokenizer, model)
     print_rank_0(f"pad_token: {tokenizer.pad_token}")
@@ -240,7 +282,8 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
 
     if model_args.quant:
         model = prepare_model_for_kbit_training(
-            model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+            model, use_gradient_checkpointing=training_args.gradient_checkpointing
+        )
 
     if model_args.peft:
         model = peft_model(model, model_args)
@@ -249,19 +292,23 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
                     module = module.to(
-                        torch.float16 if training_args.fp16 else torch.bfloat16)
-                if 'norm' in name:
+                        torch.float16 if training_args.fp16 else torch.bfloat16
+                    )
+                if "norm" in name:
                     module = module.to(
-                        torch.float16 if training_args.fp16 else torch.bfloat16)
-                if 'lm_head' in name or 'embed_tokens' in name:
-                    if hasattr(module, 'weight'):
+                        torch.float16 if training_args.fp16 else torch.bfloat16
+                    )
+                if "lm_head" in name or "embed_tokens" in name:
+                    if hasattr(module, "weight"):
                         if module.weight.dtype == torch.float32:
                             module = module.to(
-                                torch.float16 if training_args.fp16 else torch.bfloat16)
+                                torch.float16 if training_args.fp16 else torch.bfloat16
+                            )
 
     if hasattr(model, "enable_input_require_grads"):
         model.enable_input_require_grads()
     else:
+
         def make_inputs_require_grad(module, input, output):
             output.requires_grad_(True)
 
@@ -280,7 +327,8 @@ def print_trainable_parameters(model, debug=False):
                 print_rank_0(f"{name} requires grad")
             trainable_params += param.numel()
     print_rank_0(
-        f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param:.2f}")
+        f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param:.2f}"
+    )
     return (trainable_params, all_param, 100 * trainable_params / all_param)
 
 
@@ -301,30 +349,34 @@ def smart_tokenizer_and_embedding_resize(
         input_embeddings_data = model.get_input_embeddings().weight.data
         output_embeddings_data = model.get_output_embeddings().weight.data
 
-        input_embeddings_avg = input_embeddings_data[:-
-                                                     num_new_tokens].mean(dim=0, keepdim=True)
-        output_embeddings_avg = output_embeddings_data[:-
-                                                       num_new_tokens].mean(dim=0, keepdim=True)
+        input_embeddings_avg = input_embeddings_data[:-num_new_tokens].mean(
+            dim=0, keepdim=True
+        )
+        output_embeddings_avg = output_embeddings_data[:-num_new_tokens].mean(
+            dim=0, keepdim=True
+        )
 
         input_embeddings_data[-num_new_tokens:] = input_embeddings_avg
         output_embeddings_data[-num_new_tokens:] = output_embeddings_avg
+
 
 # deprecate
 
 
 def get_last_checkpoint(checkpoint_dir):
     if isdir(checkpoint_dir):
-        is_completed = exists(join(checkpoint_dir, 'completed'))
+        is_completed = exists(join(checkpoint_dir, "completed"))
         if is_completed:
             return None, True  # already finished
         max_step = 0
         for filename in os.listdir(checkpoint_dir):
-            if isdir(join(checkpoint_dir, filename)) and filename.startswith('checkpoint'):
-                max_step = max(max_step, int(
-                    filename.replace('checkpoint-', '')))
+            if isdir(join(checkpoint_dir, filename)) and filename.startswith(
+                "checkpoint"
+            ):
+                max_step = max(max_step, int(filename.replace("checkpoint-", "")))
         if max_step == 0:
             return None, is_completed  # training started, but no checkpoint
-        checkpoint_dir = join(checkpoint_dir, f'checkpoint-{max_step}')
+        checkpoint_dir = join(checkpoint_dir, f"checkpoint-{max_step}")
         print_rank_0(f"Found a previous checkpoint at: {checkpoint_dir}")
         return checkpoint_dir, is_completed  # checkpoint found!
     return None, False  # first training

@@ -24,20 +24,21 @@ os.environ["INQUIRERPY_STYLE_QUESTIONMARK"] = "#E3170D"
 @run_once
 def print_navigation():
     print_rank_0(
-        '''
+        """
         Navigation
         ↑↓      select
         space   selecting
         enter   comfirm
         Ctrl+A  select all
-        '''
+        """
     )
 
 
 class ExplicitEnum(str, Enum):
-    '''
+    """
     from huggingface transformers
-    '''
+    """
+
     @classmethod
     def _missing_(cls, value):
         raise ValueError(
@@ -99,7 +100,7 @@ class Action:
     def execute(self):
         if self.action:
             # self.result = self.action.execute()
-            return (self.action.execute())
+            return self.action.execute()
 
 
 class CheckboxAction(Action):
@@ -126,7 +127,7 @@ taskAction = CheckboxAction(
             Choice(TaskType.INFERENCE, name="Inference"),
         ],
     ),
-    key=ConfigType.TASK
+    key=ConfigType.TASK,
 )
 
 batchsizeAction = CheckboxAction(
@@ -137,7 +138,7 @@ batchsizeAction = CheckboxAction(
         invalid_message="should be at least 1 selection",
         instruction="(select at least 1)",
     ),
-    key=ConfigType.BATCHSIZE
+    key=ConfigType.BATCHSIZE,
 )
 
 sequence_lengthAction = CheckboxAction(
@@ -148,7 +149,7 @@ sequence_lengthAction = CheckboxAction(
         invalid_message="should be at least 1 selection",
         instruction="(select at least 1)",
     ),
-    key=ConfigType.SEQUENCE_LENGTH
+    key=ConfigType.SEQUENCE_LENGTH,
 )
 
 modelAction = CheckboxAction(
@@ -156,8 +157,7 @@ modelAction = CheckboxAction(
         message="Model:",
         choices=[
             Choice(ModelType.LLAMA_2_1_3B, name="Llama-2-1.3b-hf"),
-            Choice(ModelType.LLAMA_2_7B,
-                   name="Llama-2-7b-hf (default)", enabled=True),
+            Choice(ModelType.LLAMA_2_7B, name="Llama-2-7b-hf (default)", enabled=True),
             Choice(ModelType.LLAMA_2_13B, name="Llama-2-13b-hf"),
             Choice(ModelType.LLAMA_2_70B, name="Llama-2-70b-hf"),
         ],
@@ -165,30 +165,29 @@ modelAction = CheckboxAction(
         invalid_message="should be at least 1 selection",
         instruction="(select at least 1)",
     ),
-    key=ConfigType.MODEL
+    key=ConfigType.MODEL,
 )
 
 optimization_techniquesAction = CheckboxAction(
     action=inquirer.checkbox(
         message="Optimization techniques:",
         choices=[
-            Choice(OptimizationTechniquesType.RECOMPUTATION,
-                   name="Activation Checkpointing"),
-            Choice(OptimizationTechniquesType.FLASHATTENTION,
-                   name="Flash Attention"),
+            Choice(
+                OptimizationTechniquesType.RECOMPUTATION,
+                name="Activation Checkpointing",
+            ),
+            Choice(OptimizationTechniquesType.FLASHATTENTION, name="Flash Attention"),
             Choice(OptimizationTechniquesType.ZERO2, name="ZeRO-2"),
             Choice(OptimizationTechniquesType.ZERO3, name="ZeRO-3"),
-            Choice(OptimizationTechniquesType.ZERO2_OFFLOAD,
-                   name="ZeRO-2 + Offload"),
-            Choice(OptimizationTechniquesType.ZERO3_OFFLOAD,
-                   name="ZeRO-3 + Offload"),
+            Choice(OptimizationTechniquesType.ZERO2_OFFLOAD, name="ZeRO-2 + Offload"),
+            Choice(OptimizationTechniquesType.ZERO3_OFFLOAD, name="ZeRO-3 + Offload"),
             Choice(OptimizationTechniquesType.QUANTIZATION, name="Quantization"),
         ],
         validate=lambda result: len(result) >= 0,
         invalid_message="",
         instruction="(select 0 or more techniques to benchmark)",
     ),
-    key=ConfigType.OPTIMIZATION_TECHNIQUES
+    key=ConfigType.OPTIMIZATION_TECHNIQUES,
 )
 
 allow_mixAction = SelectAction(
@@ -200,7 +199,7 @@ allow_mixAction = SelectAction(
         ],
         multiselect=False,
     ),
-    key=ConfigType.ALLOW_MIX
+    key=ConfigType.ALLOW_MIX,
 )
 
 peftAction = CheckboxAction(
@@ -214,7 +213,7 @@ peftAction = CheckboxAction(
         invalid_message="should be at least 1 selection",
         instruction="(select PEFT method to benchmark)",
     ),
-    key=ConfigType.PEFT
+    key=ConfigType.PEFT,
 )
 
 
@@ -244,15 +243,14 @@ def get_gpu_candidate(n_gpus: int) -> List:
 
 
 def get_n_gpus_Action(n_gpus: int):
-    return (
-        CheckboxAction(
-            action=inquirer.select(
-                message="How many GPU(s) to use in benchmark?",
-                choices=get_gpu_candidate(n_gpus),
-                multiselect=False,
-            ),
-            key=ConfigType.NGPUS
-        ))
+    return CheckboxAction(
+        action=inquirer.select(
+            message="How many GPU(s) to use in benchmark?",
+            choices=get_gpu_candidate(n_gpus),
+            multiselect=False,
+        ),
+        key=ConfigType.NGPUS,
+    )
 
 
 key2cmd = {
@@ -272,7 +270,9 @@ class BenchmarkConfig:
     def __init__(self, config: Dict = None) -> None:
         self.config = config
 
-    def get_optimization_techniques_cmd(self, config: Dict, optimization_techniques: List):
+    def get_optimization_techniques_cmd(
+        self, config: Dict, optimization_techniques: List
+    ):
         cmds = []
         combos = []
 
@@ -280,21 +280,31 @@ class BenchmarkConfig:
             cmds = [key2cmd[i] for i in optimization_techniques]
             return cmds
 
-        for i in range(1, len(optimization_techniques)+1):
+        for i in range(1, len(optimization_techniques) + 1):
             for combo in combinations(optimization_techniques, i):
                 if self.mix_rules(combo):
                     combos.append(combo)
         for combo in combos:
             optimization_techniques_cmd_combo = [key2cmd[i] for i in combo]
-            cmds.append(' '.join(optimization_techniques_cmd_combo))
+            cmds.append(" ".join(optimization_techniques_cmd_combo))
         return cmds
 
     def mix_rules(self, combo: List) -> bool:
         counts = Counter(combo)
 
-        if (counts[OptimizationTechniquesType.ZERO2]+counts[OptimizationTechniquesType.ZERO2_OFFLOAD]+counts[OptimizationTechniquesType.ZERO3]+counts[OptimizationTechniquesType.ZERO3_OFFLOAD] > 1):
+        if (
+            counts[OptimizationTechniquesType.ZERO2]
+            + counts[OptimizationTechniquesType.ZERO2_OFFLOAD]
+            + counts[OptimizationTechniquesType.ZERO3]
+            + counts[OptimizationTechniquesType.ZERO3_OFFLOAD]
+            > 1
+        ):
             return False
-        if (counts[OptimizationTechniquesType.QUANTIZATION]+counts[OptimizationTechniquesType.LORA]+counts[OptimizationTechniquesType.QLORA]):
+        if (
+            counts[OptimizationTechniquesType.QUANTIZATION]
+            + counts[OptimizationTechniquesType.LORA]
+            + counts[OptimizationTechniquesType.QLORA]
+        ):
             return False
 
         return True
@@ -312,37 +322,112 @@ class BenchmarkConfig:
         dataset_path = config[ConfigType.DATASET_PATH]
         output_path = config[ConfigType.OUTPUT_PATH]
 
-        if (TaskType.PRETRAIN in config):
+        if TaskType.PRETRAIN in config:
             pre_train_config = config[TaskType.PRETRAIN]
 
             # Without opti-tech
-            for i in list(product(pre_train_config[ConfigType.MODEL], pre_train_config[ConfigType.SEQUENCE_LENGTH], pre_train_config[ConfigType.BATCHSIZE])):
-                cmds.append(self.BenchmarkCMD(
-                    pre_train_config[ConfigType.NGPUS], memory, main_file_path, models_path, dataset_path, output_path, i[0], "", i[1], i[2]))
+            for i in list(
+                product(
+                    pre_train_config[ConfigType.MODEL],
+                    pre_train_config[ConfigType.SEQUENCE_LENGTH],
+                    pre_train_config[ConfigType.BATCHSIZE],
+                )
+            ):
+                cmds.append(
+                    self.BenchmarkCMD(
+                        pre_train_config[ConfigType.NGPUS],
+                        memory,
+                        main_file_path,
+                        models_path,
+                        dataset_path,
+                        output_path,
+                        i[0],
+                        "",
+                        i[1],
+                        i[2],
+                    )
+                )
 
-            for i in list(product(pre_train_config[ConfigType.MODEL], self.get_optimization_techniques_cmd(pre_train_config, pre_train_config[ConfigType.OPTIMIZATION_TECHNIQUES]), pre_train_config[ConfigType.SEQUENCE_LENGTH], pre_train_config[ConfigType.BATCHSIZE])):
+            for i in list(
+                product(
+                    pre_train_config[ConfigType.MODEL],
+                    self.get_optimization_techniques_cmd(
+                        pre_train_config,
+                        pre_train_config[ConfigType.OPTIMIZATION_TECHNIQUES],
+                    ),
+                    pre_train_config[ConfigType.SEQUENCE_LENGTH],
+                    pre_train_config[ConfigType.BATCHSIZE],
+                )
+            ):
                 # With opti-tech
-                cmds.append(self.BenchmarkCMD(
-                    pre_train_config[ConfigType.NGPUS], memory, main_file_path, models_path, dataset_path, output_path, i[0], i[1], i[2], i[3]))
+                cmds.append(
+                    self.BenchmarkCMD(
+                        pre_train_config[ConfigType.NGPUS],
+                        memory,
+                        main_file_path,
+                        models_path,
+                        dataset_path,
+                        output_path,
+                        i[0],
+                        i[1],
+                        i[2],
+                        i[3],
+                    )
+                )
 
-        if (TaskType.FINETUNE in config):
+        if TaskType.FINETUNE in config:
             fine_tune_config = config[TaskType.FINETUNE]
 
-            for i in list(product(fine_tune_config[ConfigType.MODEL], self.get_optimization_techniques_cmd(pre_train_config, fine_tune_config[ConfigType.PEFT]+fine_tune_config[ConfigType.OPTIMIZATION_TECHNIQUES]), fine_tune_config[ConfigType.SEQUENCE_LENGTH], fine_tune_config[ConfigType.BATCHSIZE])):
-                cmds.append(self.BenchmarkCMD(
-                    fine_tune_config[ConfigType.NGPUS], memory, main_file_path, models_path, dataset_path, output_path, i[0], i[1], i[2], i[3]))
+            for i in list(
+                product(
+                    fine_tune_config[ConfigType.MODEL],
+                    self.get_optimization_techniques_cmd(
+                        pre_train_config,
+                        fine_tune_config[ConfigType.PEFT]
+                        + fine_tune_config[ConfigType.OPTIMIZATION_TECHNIQUES],
+                    ),
+                    fine_tune_config[ConfigType.SEQUENCE_LENGTH],
+                    fine_tune_config[ConfigType.BATCHSIZE],
+                )
+            ):
+                cmds.append(
+                    self.BenchmarkCMD(
+                        fine_tune_config[ConfigType.NGPUS],
+                        memory,
+                        main_file_path,
+                        models_path,
+                        dataset_path,
+                        output_path,
+                        i[0],
+                        i[1],
+                        i[2],
+                        i[3],
+                    )
+                )
 
         return cmds
 
-    def BenchmarkCMD(self, n_gpus: int, memory: int, main_file_path: str, models_path: str, dataset_path: str, output_path: str, model: str, optimization_techniques: str, sequence_length: int, batchsize: int):
-        '''
+    def BenchmarkCMD(
+        self,
+        n_gpus: int,
+        memory: int,
+        main_file_path: str,
+        models_path: str,
+        dataset_path: str,
+        output_path: str,
+        model: str,
+        optimization_techniques: str,
+        sequence_length: int,
+        batchsize: int,
+    ):
+        """
         A default cmd in training should be like this:
 
         CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 DS_SKIP_CUDA_CHECK=1 accelerate launch $WORK_PATH/run_llama.py --model_name_or_path $MODEL_PATH/$MODEL_NAME --local_data_path $WORK_PATH/data --dataset $DATASET --metrics_path $WORK_PATH/metrics --output_dir $WORK_PATH/output/ --num_train_epochs 15 --learning_rate 0.0002 --logging_strategy steps --logging_steps 1 --save_strategy no --save_steps 1 --evaluation_strategy no --eval_steps 1 --eval_dataset_size 10 --max_eval_samples 10 --per_device_eval_batch_size 1 --max_new_tokens 32 --dataloader_num_workers 1 --remove_unused_columns False --do_train --do_eval --source_max_len 256 --target_max_len 256 --ddp_find_unused_parameters False --overwrite_output_dir --bf16 --profiler_warmup_step 2 --max_steps 4 --profiler pytorch --max_memory_MB 24000 --per_device_train_batch_size 1
 
         For benchmark, some args (dataset, learning_rate, etc.) are set to default value, as they won't influence the result.
 
-        '''
+        """
 
         DS_SKIP_CUDA_CHECK = 1
         # if DS_SKIP_CUDA_CHECK == 1:
@@ -360,40 +445,44 @@ def get_path_SerialAction(path: str):
         action=inquirer.filepath(
             message="Enter the path to llm-benchmark:",
             default=path,
-            validate=PathValidator(
-                is_dir=True, message="Input is not a directory"),
-            only_directories=True,),
-        key=ConfigType.WORK_PATH
+            validate=PathValidator(is_dir=True, message="Input is not a directory"),
+            only_directories=True,
+        ),
+        key=ConfigType.WORK_PATH,
     )
     main_file_path = InputAction(
         action=inquirer.filepath(
             message="Enter the path to benchmark.py (or the python script you want to run):",
             default=os.path.join(path, "benchmark.py"),
-            validate=PathValidator(is_file=True, message="Input is not a file"),),
-        key=ConfigType.MAIN_FILE_PATH
+            validate=PathValidator(is_file=True, message="Input is not a file"),
+        ),
+        key=ConfigType.MAIN_FILE_PATH,
     )
     models_path = InputAction(
         action=inquirer.filepath(
             message="Enter the path to models (leave blank to download from huggingface):",
             default=os.path.join(path, "models"),
-            validate=PathValidator(
-                is_dir=True, message="Input is not a directory"),
-            only_directories=True,),
-        key=ConfigType.MODELS_PATH
+            validate=PathValidator(is_dir=True, message="Input is not a directory"),
+            only_directories=True,
+        ),
+        key=ConfigType.MODELS_PATH,
     )
     dataset_path = InputAction(
         action=inquirer.filepath(
             message="Enter the path to datasets (leave blank to download from huggingface):",
             default=os.path.join(path, "datasets"),
-            validate=PathValidator(
-                is_dir=True, message="Input is not a directory"),
-            only_directories=True,),
-        key=ConfigType.DATASET_PATH
+            validate=PathValidator(is_dir=True, message="Input is not a directory"),
+            only_directories=True,
+        ),
+        key=ConfigType.DATASET_PATH,
     )
     output_path = InputAction(
         action=inquirer.filepath(
             message="Enter the output path:",
-            default=os.path.join(path, "output"),),
-        key=ConfigType.OUTPUT_PATH
+            default=os.path.join(path, "output"),
+        ),
+        key=ConfigType.OUTPUT_PATH,
     )
-    return SerialAction([work_path, main_file_path, models_path, dataset_path, output_path])
+    return SerialAction(
+        [work_path, main_file_path, models_path, dataset_path, output_path]
+    )

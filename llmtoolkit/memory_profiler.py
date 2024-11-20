@@ -40,7 +40,9 @@ def export_memory_timeline_html(
     max_memory_allocated = torch.cuda.max_memory_allocated()
     max_memory_reserved = torch.cuda.max_memory_reserved()
 
-    print_rank_0("Processing memory trace, to find the memory overhead of each category, such as parameter, gradient, etc. The output is rounded to 3 decimals.")
+    print_rank_0(
+        "Processing memory trace, to find the memory overhead of each category, such as parameter, gradient, etc. The output is rounded to 3 decimals."
+    )
     category_max_memory = {}
     total_memory_overhead = 0
     for category, color in _CATEGORY_TO_COLORS.items():
@@ -60,7 +62,13 @@ def export_memory_timeline_html(
             times / 1e3, stacked[:, i], stacked[:, i + 1], color=color, alpha=0.7
         )
     fig.legend(
-        [f"Unknown {category_max_memory[i]} GB" if i is None else f"{i.name} {category_max_memory[i]} GB" for i in _CATEGORY_TO_COLORS])
+        [
+            f"Unknown {category_max_memory[i]} GB"
+            if i is None
+            else f"{i.name} {category_max_memory[i]} GB"
+            for i in _CATEGORY_TO_COLORS
+        ]
+    )
     # Usually training steps are in magnitude of ms.
     axes.set_xlabel("Time (ms)")
     axes.set_ylabel("Memory (GB)")
@@ -83,7 +91,8 @@ def export_memory_timeline_html(
         fig.savefig(path.replace(".html", ".png"))
     except:
         print_rank_0(
-            "Memory overhead cannot be saved into .png (path is unspecified)! HTML is not impacted.")
+            "Memory overhead cannot be saved into .png (path is unspecified)! HTML is not impacted."
+        )
 
     with open(tmpfile.name, "rb") as tmp:
         encoded = b64encode(tmp.read()).decode("utf-8")
