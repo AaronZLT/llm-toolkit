@@ -8,7 +8,6 @@ with open("README.md", "r") as fh:
 _deps = [
 'bitsandbytes',
 'datasets',
-'deepspeed',
 'evaluate',
 'InquirerPy',
 'numpy',
@@ -32,7 +31,6 @@ deps = {b: a for a, b in (re.findall(r"^(([^!=<>~ ]+)(?:[!=<>~ ].*)?$)", x)[0] f
 install_requires = [
     deps["bitsandbytes"],
     deps["datasets"],
-    deps["deepspeed"],
     deps["evaluate"],
     deps["InquirerPy"],
     deps["numpy"],
