@@ -247,18 +247,16 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     )
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
-    tokenizer.padding_side = "right"
+    tokenizer.padding_side = "left"
 
     # add special tokens
-    # 1. add pad_token if pad_token is None, as unk_token or eos_token if unk_token is None
-    # 2. add unk_token if unk_token is None, as pad_token or eos_token if pad_token is None
+    # 1. add pad_token if pad_token is None, as "<|reserved_special_token_100|>", not as any in-use tokens
+    # 2. add unk_token if unk_token is None (even though for most models they do have unk_token), as "<|reserved_special_token_101|>"
+    # 3. final check pad_token, eos_token, bos_token, unk_token
+    # 4. the best case is when the tokenizer and model support these reserved tokens, since then we do not need to resize the embedding
     special_tokens_dict = dict()
     if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = (
-            tokenizer.unk_token
-            if tokenizer.unk_token is not None
-            else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
-        )
+        special_tokens_dict["pad_token"] = "<|reserved_special_token_100|>"
     if tokenizer.eos_token is None:
         special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(
             model.config.eos_token_id
@@ -268,12 +266,7 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
             model.config.bos_token_id
         )
     if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = (
-            tokenizer.pad_token
-            if tokenizer.pad_token is not None
-            else tokenizer.convert_ids_to_tokens(model.config.eos_token_id)
-        )
-
+        special_tokens_dict["unk_token"] = "<|reserved_special_token_101|>"
     smart_tokenizer_and_embedding_resize(special_tokens_dict, tokenizer, model)
     print_rank_0(f"pad_token: {tokenizer.pad_token}")
     print_rank_0(f"eos_token: {tokenizer.eos_token}")
@@ -344,20 +337,6 @@ def smart_tokenizer_and_embedding_resize(
     print_rank_0(f"adding special tokens, {special_tokens_dict}")
     num_new_tokens = tokenizer.add_special_tokens(special_tokens_dict)
     model.resize_token_embeddings(len(tokenizer))
-
-    if num_new_tokens > 0:
-        input_embeddings_data = model.get_input_embeddings().weight.data
-        output_embeddings_data = model.get_output_embeddings().weight.data
-
-        input_embeddings_avg = input_embeddings_data[:-num_new_tokens].mean(
-            dim=0, keepdim=True
-        )
-        output_embeddings_avg = output_embeddings_data[:-num_new_tokens].mean(
-            dim=0, keepdim=True
-        )
-
-        input_embeddings_data[-num_new_tokens:] = input_embeddings_avg
-        output_embeddings_data[-num_new_tokens:] = output_embeddings_avg
 
 
 # deprecate

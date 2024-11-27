@@ -199,7 +199,7 @@ def offline_evaluate(task: str, data: list) -> float:
 
 
 def infly_evaluate(
-    task: str, model_name_or_path, peft_name_or_path: str = None
+    task: str, model_name_or_path, peft_name_or_path: str = None, load_in_4bit: bool = False
 ) -> float:
     if task == "gsm8k":
         strategy = GSM8KEvaluationStrategy()
@@ -213,7 +213,7 @@ def infly_evaluate(
     prompts = list(eval_dataset["input"])
     prompt_to_golden = {item["input"]: item["output"] for item in eval_dataset}
 
-    results = vllm_inference(prompts, model_name_or_path, peft_name_or_path)
+    results = vllm_inference(prompts, model_name_or_path, peft_name_or_path, load_in_4bit = load_in_4bit)
 
     inspection = []
     for result in results:

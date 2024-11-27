@@ -220,7 +220,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         metadata={"help": "To train or not to train, that is the question?"},
     )
     lr_scheduler_type: str = field(
-        default="linear",
+        default="cosine",
         metadata={
             "help": "Learning rate schedule. Constant a bit better than cosine, and has advantage for analysis. Linear is better tuning the loss."
         },
