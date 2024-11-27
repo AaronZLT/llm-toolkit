@@ -11,7 +11,6 @@ from transformers import (
 from peft import (
     PeftModel,
 )
-from peft.tuners.lora import LoraLayer
 
 from .utils import (
     print_rank_0,
@@ -22,7 +21,7 @@ from .utils import (
 
 
 def flexible_load(args):
-    if args.flash_attn == True:
+    if args.flash_attn:
         import importlib.util
 
         flashattn_spec = importlib.util.find_spec("flash-attn")
@@ -40,14 +39,14 @@ def flexible_load(args):
     max_memory = {i: max_memory for i in range(n_gpus)}
     device_map = None
 
-    if args.device_map != None:
+    if args.device_map is not None:
         # if we are in a distributed setting, we need to set the device map and max memory per device
         if os.environ.get("LOCAL_RANK") is not None:
             local_rank = int(os.environ.get("LOCAL_RANK", "0"))
             device_map = {"": local_rank}
             max_memory = {"": max_memory[local_rank]}
 
-    if args.deepspeed != None:
+    if args.deepspeed is not None:
         print_rank_0("Using deepspeed, disabling device_map...")
         device_map = None
 

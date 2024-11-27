@@ -1,14 +1,11 @@
 import os
 import json
-import numpy as np
 
 import torch
 import transformers
 from transformers import (
     set_seed,
 )
-import accelerate
-from accelerate import Accelerator
 from accelerate.utils import DistributedType
 
 from .arguments import (
@@ -35,8 +32,6 @@ from .trainer import (
 )
 from .utils import (
     print_rank_0,
-    safe_dict2file,
-    clear_torch_cache,
 )
 from .memory_profiler import (
     export_memory_timeline_html,
@@ -168,10 +163,8 @@ def train_cli(
         **{k: v for k, v in data_module.items() if k != "predict_dataset"},
     )
 
-    try:
-        print_rank_0(f"device map: {model.hf_device_map}")
-    except:
-        pass
+    if hasattr(model, "hf_device_map"):
+        print_rank_0(model.hf_device_map)
 
     # Callbacks
     if training_args.clean_cache:

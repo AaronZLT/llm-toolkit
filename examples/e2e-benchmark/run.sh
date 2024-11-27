@@ -1,19 +1,17 @@
 #!/bin/bash
 
 ### Global env setting
-LLM_TOOLKIT_PATH=/root/ltzhang/llm-toolkit
-MODELS_PATH=/root/ltzhang/data/data01/ltzhang/dummymodels
+MODELS_PATH=llm-toolkit/models
 
-DATASET=$LLM_TOOLKIT_PATH/datasets
-LLAMA1_3B=$MODELS_PATH/Llama-2-1.3b-hf
-LLAMA7B=$MODELS_PATH/Llama-2-7b-hf
-LLAMA13B=$MODELS_PATH/Llama-2-13b-hf
-LLAMA70B=$MODELS_PATH/Llama-2-70b-chat-hf
+LLAMA2_1_3B=$MODELS_PATH/Llama-2-1.3b-hf
+LLAMA2_7B=$MODELS_PATH/Llama-2-7b-hf
+LLAMA2_13B=$MODELS_PATH/Llama-2-13b-hf
+LLAMA2_70B=$MODELS_PATH/Llama-2-70b-chat-hf
 
 F=" --flash_attn True"
 R=" --gradient_checkpointing True"
-L=" --peft lora --lora_r 64"
-QL=" --quant True --double_quant True --bits 4 --peft lora --lora_r 64"
+L=" --peft lora --lora_rank 64"
+QL=" --quant True --bits 4 --peft lora --lora_rank 64"
 Z2=" --deepspeed zero2.json"
 Z2O=" --deepspeed zero2off.json"
 Z3=" --deepspeed zero3.json"
@@ -39,47 +37,47 @@ techniques=(
     "${Z2O}"
     "${Z3}"
     "${Z3O}"
-    # # 2 mix
-    # "${F}${R}"
-    # "${F}${L}"
-    # "${F}${QL}"
-    # "${F}${Z2}"
-    # "${F}${Z2O}"
-    # "${F}${Z3}"
-    # "${F}${Z3O}"
-    # "${R}${L}"
-    # "${R}${QL}"
-    # "${R}${Z2}"
-    # "${R}${Z2O}"
-    # "${R}${Z3}"
-    # "${R}${Z3O}"
-    # "${L}${Z2}"
-    # "${L}${Z2O}"
-    # "${L}${Z3}"
-    # "${L}${Z3O}"
-    # # 3 mix
-    # "${F}${R}${L}"
-    # "${F}${R}${QL}"
-    # "${F}${R}${Z2}"
-    # "${F}${R}${Z2O}"
-    # "${F}${R}${Z3}"
-    # "${F}${R}${Z3O}"
-    # "${R}${L}${Z2}"
-    # "${R}${L}${Z2O}"
-    # "${R}${L}${Z3O}"
-    # "${R}${L}${Z3O}"
-    # # 4 mix
-    # "${F}${R}${L}${Z2}"
-    # "${F}${R}${L}${Z2O}"
-    # "${F}${R}${L}${Z3}"
-    # "${F}${R}${L}${Z3O}"
+    # 2 mix
+    "${F}${R}"
+    "${F}${L}"
+    "${F}${QL}"
+    "${F}${Z2}"
+    "${F}${Z2O}"
+    "${F}${Z3}"
+    "${F}${Z3O}"
+    "${R}${L}"
+    "${R}${QL}"
+    "${R}${Z2}"
+    "${R}${Z2O}"
+    "${R}${Z3}"
+    "${R}${Z3O}"
+    "${L}${Z2}"
+    "${L}${Z2O}"
+    "${L}${Z3}"
+    "${L}${Z3O}"
+    # 3 mix
+    "${F}${R}${L}"
+    "${F}${R}${QL}"
+    "${F}${R}${Z2}"
+    "${F}${R}${Z2O}"
+    "${F}${R}${Z3}"
+    "${F}${R}${Z3O}"
+    "${R}${L}${Z2}"
+    "${R}${L}${Z2O}"
+    "${R}${L}${Z3}"
+    "${R}${L}${Z3O}"
+    # 4 mix
+    "${F}${R}${L}${Z2}"
+    "${F}${R}${L}${Z2O}"
+    "${F}${R}${L}${Z3}"
+    "${F}${R}${L}${Z3O}"
 )
 
 model_sizes=(
-    " --model_name_or_path $LLAMA1_3B"
-    " --model_name_or_path $LLAMA7B"
-    " --model_name_or_path $LLAMA13B"
-    # " --model_name_or_path $LLAMA70B"
+    " --model_name_or_path $LLAMA2_1_3B"
+    " --model_name_or_path $LLAMA2_7B"
+    " --model_name_or_path $LLAMA2_13B"
+    " --model_name_or_path $LLAMA2_70B"
 )
 
 sequence_lengths=(
@@ -106,7 +104,7 @@ batch_sizes=(
     " --per_device_train_batch_size 256"
 )
 
-base="DS_SKIP_CUDA_CHECK=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 accelerate launch benchmark.py --local_data_path $DATASET --dataset alpaca --output_dir profile --logging_strategy steps --logging_steps 1 --save_strategy no --save_steps 1 --dataloader_num_workers 32 --remove_unused_columns False --do_train --ddp_find_unused_parameters False --overwrite_output_dir --bf16 --profiler no --profiler_warmup_step 4 --max_steps 5 --max_memory_MB 96000 --hard_padding True"
+base="DS_SKIP_CUDA_CHECK=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 accelerate launch benchmark.py --dataset alpaca --output_dir benchmark --logging_strategy steps --logging_steps 1 --save_strategy no --dataloader_num_workers 32 --remove_unused_columns False --do_train --ddp_find_unused_parameters False --overwrite_output_dir --bf16 --profiler no --profiler_warmup_step 3 --max_steps 5 --hard_padding True"
 
 for gpu in "${gpus[@]}"; do
     for model_size in "${model_sizes[@]}"; do

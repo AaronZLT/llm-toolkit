@@ -1,4 +1,3 @@
-
 class BenchKernel(object):
     def __init__(self, name, ts, dur):
         self.name = name

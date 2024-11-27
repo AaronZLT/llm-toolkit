@@ -273,13 +273,6 @@ def preprocess_hhrlhf(dataset: datasets.Dataset) -> datasets.Dataset:
 
 def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        return {"input": "", "output": example["text"]}
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
         return {"input": example["inputs"], "output": example["targets"]}
 
     return dataset.map(_preprocess_doc)

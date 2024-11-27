@@ -1,25 +1,10 @@
-import warnings
-from copy import deepcopy
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Union
 
 import torch
-import torch.distributed as dist
 from torch import nn
-from torch.utils.data import Dataset
 
-import transformers
 from transformers import (
     Seq2SeqTrainer,
-)
-
-from .utils import (
-    get_rank,
-    rank_0,
-    print_rank_0,
-    safe_dict2file,
-    is_ipex_available,
-    hardware_info,
 )
 
 

@@ -9,7 +9,6 @@ from accelerate import Accelerator
 from .utils import (
     get_world_size,
     print_rank_0,
-    safe_dict2file,
     rank_0,
     plot_xy,
     save_fig,
@@ -200,6 +199,3 @@ class StepInfoCallback(transformers.TrainerCallback):
 
         gsi.info.update(profile_dict)
         gsi.dump(self.output_dir)
-
-        # safe_dict2file(profile_dict, os.path.join(
-        #     self.output_dir, "profiler.txt"))

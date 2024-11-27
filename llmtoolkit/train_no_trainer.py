@@ -13,7 +13,6 @@ from transformers import (
     get_scheduler,
 )
 
-import accelerate
 from accelerate import Accelerator
 from accelerate.utils import DistributedType
 
@@ -52,7 +51,7 @@ class MemoryTracer:
         self.time_stamp = []
         self.name = []
         self.device_rank = get_rank()
-        self.enable_trace = args.debug_mode == True
+        self.enable_trace = args.debug_mode
         self.output_dir = args.output_dir
         print_rank_0(f"Memory tracer successfully created on rank-{self.device_rank}")
 
@@ -151,14 +150,10 @@ def train_no_trainer():
     )
     memory_tracer = MemoryTracer(args)
 
-    torch_overhead = torch.randn(1).cuda()
     memory_tracer.trace()
 
     # no jit CPUAdamBuilder since it is too slow or may break the training process
     # deepspeed.ops.op_builder.CPUAdamBuilder().load()
-
-    hardware = hardware_info()
-    n_gpus = hardware.n_gpus
 
     r"""
     The preparation follows the order below

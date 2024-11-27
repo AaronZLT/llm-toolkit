@@ -15,8 +15,6 @@ from .callbacks import (
     StepInfoCallback,
 )
 from .dataset import (
-    IGNORE_INDEX,
-    DEFAULT_PAD_TOKEN,
     build_data_module,
 )
 from .evaluate import (
@@ -30,7 +28,6 @@ from .memory_profiler import (
 )
 from .model import (
     get_accelerate_model,
-    get_last_checkpoint,
     print_trainable_parameters,
 )
 from .load_and_save import (

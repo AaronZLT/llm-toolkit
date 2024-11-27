@@ -1,12 +1,14 @@
 #!/bin/bash
 
-# HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-LLM_BENCHMARK_PATH=/hpc2hdd/home/lzhang330/llm-toolkit
+LLAMA2_7B=meta-llama/Llama-2-7b-hf
 
-DATASET=$LLM_BENCHMARK_PATH/datasets
-MODEL=/hpc2hdd/home/lzhang330/ssd_workspace/models/Llama-2-7b-hf
+wandb offline
 
-# lora
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 DS_SKIP_CUDA_CHECK=1 accelerate launch finetune.py --dataset gsm8k --output_dir gsm8k_3e-4_lora --logging_strategy steps --logging_steps 1 --save_strategy steps --save_steps 10 --evaluation_strategy no --max_new_tokens 32 --dataloader_num_workers 1 --remove_unused_columns False --do_train --do_eval --ddp_find_unused_parameters False --overwrite_output_dir --bf16 --profiler no --profiler_warmup_step 3 --model_name_or_path $MODEL --per_device_train_batch_size 128 --source_max_len 256 --target_max_len 256 --max_memory_MB 80000 --use_lora True --fa False --lora_r 64 --lora_alpha 128 --learning_rate 3e-4 --gradient_checkpointing True --max_steps -1 --num_train_epochs 50
+# full finetune
+CUDA_VISIBLE_DEVICES=0 DS_SKIP_CUDA_CHECK=1 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 accelerate launch finetune.py --dataset_name_or_path gsm8k --output_dir full-finetune-output --logging_strategy steps --logging_steps 1 --save_strategy epoch --dataloader_num_workers 32 --remove_unused_columns False --do_train --ddp_find_unused_parameters False --overwrite_output_dir --bf16 --max_steps -1 --hard_padding False --save_total_limit 3 --num_train_epochs 3 --learning_rate 2e-5 --per_device_train_batch_size 16 --source_max_len 512 --target_max_len 512 --model_name_or_path $LLAMA2_7B --flash_attn True --report_to wandb --gradient_checkpointing True
 
-# --max_steps 5
+# lora finetune
+CUDA_VISIBLE_DEVICES=0 DS_SKIP_CUDA_CHECK=1 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 accelerate launch finetune.py --dataset_name_or_path gsm8k --output_dir lora-finetune-output --logging_strategy steps --logging_steps 1 --save_strategy epoch --dataloader_num_workers 32 --remove_unused_columns False --do_train --ddp_find_unused_parameters False --overwrite_output_dir --bf16 --max_steps -1 --hard_padding False --save_total_limit 3 --num_train_epochs 3 --learning_rate 1e-4 --per_device_train_batch_size 16 --source_max_len 512 --target_max_len 512 --model_name_or_path $LLAMA2_7B --flash_attn True --report_to wandb --gradient_checkpointing True --peft lora --lora_r 16
+
+# qlora finetune
+CUDA_VISIBLE_DEVICES=0 DS_SKIP_CUDA_CHECK=1 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 accelerate launch finetune.py --dataset_name_or_path gsm8k --output_dir qlora-finetune-output --logging_strategy steps --logging_steps 1 --save_strategy epoch --dataloader_num_workers 32 --remove_unused_columns False --do_train --ddp_find_unused_parameters False --overwrite_output_dir --bf16 --max_steps -1 --hard_padding False --save_total_limit 3 --num_train_epochs 3 --learning_rate 1e-4 --per_device_train_batch_size 16 --source_max_len 512 --target_max_len 512 --model_name_or_path $LLAMA2_7B --flash_attn True --report_to wandb --gradient_checkpointing True --peft lora --lora_r 16 --quant True --bits 4

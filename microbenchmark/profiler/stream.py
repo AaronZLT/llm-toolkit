@@ -1,4 +1,3 @@
-
 class BenchStream(object):
     def __init__(self, name, kernel_list):
         self.name = name

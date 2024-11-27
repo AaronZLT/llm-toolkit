@@ -61,15 +61,23 @@ def vllm_inference(
     max_tokens = source_max_len + target_max_len
     sampling_params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=max_tokens)
     results = []
-    
+
     if peft_name_or_path:
         if load_in_4bit:
             llm = LLM(
-                model=model_name_or_path, dtype=torch.bfloat16, enable_lora=True, max_lora_rank=max_lora_rank, quantization = "bitsandbytes", load_format = "bitsandbytes"
+                model=model_name_or_path,
+                dtype=torch.bfloat16,
+                enable_lora=True,
+                max_lora_rank=max_lora_rank,
+                quantization="bitsandbytes",
+                load_format="bitsandbytes",
             )
         else:
             llm = LLM(
-                model=model_name_or_path, dtype=torch.bfloat16, enable_lora=True, max_lora_rank=max_lora_rank
+                model=model_name_or_path,
+                dtype=torch.bfloat16,
+                enable_lora=True,
+                max_lora_rank=max_lora_rank,
             )
 
         outputs = llm.generate(
@@ -79,7 +87,12 @@ def vllm_inference(
         )
     else:
         if load_in_4bit:
-            llm = LLM(model=model_name_or_path, dtype=torch.bfloat16, quantization = "bitsandbytes", load_format = "bitsandbytes")
+            llm = LLM(
+                model=model_name_or_path,
+                dtype=torch.bfloat16,
+                quantization="bitsandbytes",
+                load_format="bitsandbytes",
+            )
         else:
             llm = LLM(model=model_name_or_path, dtype=torch.bfloat16)
 

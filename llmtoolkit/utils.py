@@ -101,14 +101,14 @@ def safe_dict2file(dictionary: dict, filename: str):
 
 
 @rank_0
-def safe_list2file(l: List, filename):
+def safe_list2file(source: List, filename):
     lock = threading.Lock()
     with lock:
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
         with open(filename, "a") as file:
-            for i in l:
+            for i in source:
                 file.write(i + "\n")
 
 

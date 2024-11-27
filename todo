@@ -1,6 +1,0 @@
-[DONE]1. DDP threade-safe when record sequence on a step
-[DONE]2. feature -> finetune gsm8k
-3. feature -> finetune truthfulqa
-[In progress]4. feature -> finetune hellaswag
-5. feature -> finetune piqa, winogrande, arc-e, arc-c
-6. other

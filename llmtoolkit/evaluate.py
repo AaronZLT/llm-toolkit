@@ -4,7 +4,6 @@ from tqdm import tqdm
 from abc import ABC, abstractmethod
 
 import lm_eval
-import transformers
 from transformers import AutoTokenizer
 
 from .utils import (
@@ -13,6 +12,7 @@ from .utils import (
     get_rank,
     create_timestamp,
     require_lib,
+    gsi,
 )
 from .inference import (
     vllm_inference,
@@ -47,13 +47,13 @@ def vllm_lm_eval(
 ) -> list:
     require_lib("vllm")
     task_manager = lm_eval.tasks.TaskManager()
-    if shot == None:
+    if shot is None:
         if task in task2shot.keys():
             shot = task2shot[task]
         else:
             shot = 0
 
-    model_args = f"pretrained={model_name_or_path},tensor_parallel_size={hardware_info().n_gpus},dtype=bfloat16,max_model_len=4096"
+    model_args = f"pretrained={model_name_or_path},tensor_parallel_size={gsi.n_gpus},dtype=bfloat16,max_model_len=4096"
 
     print_rank_0(f"evaluating {task}")
     result = lm_eval.simple_evaluate(
@@ -67,7 +67,7 @@ def vllm_lm_eval(
 
     if dump:
         if get_rank() == 0:
-            if output_dir == None:
+            if output_dir is None:
                 output_dir = f"eval_{create_timestamp()}"
             safe_dict2file(
                 {"model": model_name_or_path},
@@ -87,7 +87,7 @@ def hf_lm_eval(
     output_dir: str = None,
 ) -> list:
     task_manager = lm_eval.tasks.TaskManager()
-    if shot == None:
+    if shot is None:
         if task in task2shot.keys():
             shot = task2shot[task]
         else:
@@ -96,8 +96,8 @@ def hf_lm_eval(
     model_args = (
         f"pretrained={model_name_or_path},tokenizer={model_name_or_path},dtype=bfloat16"
     )
-    if peft != None:
-        model_args += f",peft={peft}"
+    if peft_name_or_path is not None:
+        model_args += f",peft={peft_name_or_path}"
 
     print_rank_0(f"evaluating {task}")
     result = lm_eval.simple_evaluate(
@@ -111,7 +111,7 @@ def hf_lm_eval(
 
     if dump:
         if get_rank() == 0:
-            if output_dir == None:
+            if output_dir is not None:
                 output_dir = f"eval_{create_timestamp()}"
             safe_dict2file(
                 {"model": model_name_or_path},
@@ -199,7 +199,10 @@ def offline_evaluate(task: str, data: list) -> float:
 
 
 def infly_evaluate(
-    task: str, model_name_or_path, peft_name_or_path: str = None, load_in_4bit: bool = False
+    task: str,
+    model_name_or_path,
+    peft_name_or_path: str = None,
+    load_in_4bit: bool = False,
 ) -> float:
     if task == "gsm8k":
         strategy = GSM8KEvaluationStrategy()
@@ -213,7 +216,9 @@ def infly_evaluate(
     prompts = list(eval_dataset["input"])
     prompt_to_golden = {item["input"]: item["output"] for item in eval_dataset}
 
-    results = vllm_inference(prompts, model_name_or_path, peft_name_or_path, load_in_4bit = load_in_4bit)
+    results = vllm_inference(
+        prompts, model_name_or_path, peft_name_or_path, load_in_4bit=load_in_4bit
+    )
 
     inspection = []
     for result in results:

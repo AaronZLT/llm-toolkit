@@ -33,7 +33,7 @@ class ModelArguments:
             "help": "To use peft, choose from [lora|lora-fa|vera|dora|prompt|embedding]"
         },
     )
-    lora_r: int = field(
+    lora_rank: int = field(
         default=1,
         metadata={"help": "lora rank, default = 1"},
     )
@@ -250,7 +250,9 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     profiler: str = field(
         default=None,
-        metadata={"help": "To profile or not to profile, that is the question?"},
+        metadata={
+            "help": "To profile or not to profile, that is the question. *Profiler may slow down the training efficiency"
+        },
     )
     profiler_warmup_step: int = field(
         default=30, metadata={"help": "profiler_warmup_step. Default = 30 steps."}
