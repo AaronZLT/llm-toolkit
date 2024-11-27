@@ -1,0 +1,71 @@
+{
+    "stage": {
+        "forward": {
+            "start":["TensorSizeStride", "Memcpy", "Memcpy", "Memcpy", "Memcpy", "Memcpy"],
+            "end":["nll_loss_forward_reduce_cuda_kernel_2d", "MulFunctor", "FillFunctor"]
+        },
+        "backward": {
+            "start":["MulFunctor", "FillFunctor", "nll_loss_backward_reduce_cuda_kernel_2d"],
+            "end":["DeviceScanKernel","compute_num_of_partial_segments","krn_partial_segment_offset", "compute_grad_weight", "sum_and_scatter"]
+        },
+        "optimize": {
+            "start":["FillFunctor", "LpNormFunctor", "LpNormFunctor", "LpNormFunctor", "LpNormFunctor"],
+            "end":["Memcpy","Memcpy","TensorSizeStride", "sum_functor", "Memcpy"]
+        }
+    },
+    "fine_module": {
+        "mlp":["ampere_bf16_s16816gemm_bf16_128x256_ldg8_f2f_stages_64x3_tn",
+        "vectorized_elementwise_kernel",
+        "Memset",
+        "ampere_bf16_s16816gemm_bf16_128x256_ldg8_f2f_stages_64x3_tn",
+        "vectorized_elementwise_kernel",
+        "Memset",
+        "ampere_bf16_s16816gemm_bf16_128x256_ldg8_f2f_stages_64x3_tn"],
+        "rms":["unrolled_elementwise_kernel","vectorized_elementwise_kernel","reduce_kernel","vectorized_elementwise_kernel","vectorized_elementwise_kernel","elementwise_kernel","unrolled_elementwise_kernel","elementwise_kernel"],
+        "qkv":["Memset",
+        "cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_32x5_tn_align8",
+        "Memset",
+        "cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_32x5_tn_align8",
+        "Memset",
+        "cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_32x5_tn_align8"],
+        "rope":["index_elementwise_kernel", "index_elementwise_kernel","elementwise_kernel","elementwise_kernel","CatArrayBatchedCopy","elementwise_kernel","elementwise_kernel","elementwise_kernel","elementwise_kernel","CatArrayBatchedCopy","elementwise_kernel","elementwise_kernel"],
+        "qk^t": ["elementwise_kernel","elementwise_kernel","cutlass_80_tensorop_bf16_s16816gemm_bf16_256x128_32x3_nn_align2"], 
+        "sftmx": ["unrolled_elementwise_kernel","softmax_warp_forward"],
+        "dv":["direct_copy_kernel_cuda","cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_32x4_nn_align2", "direct_copy_kernel_cuda"],
+        "wo":["Memset", "cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_32x5_tn_align8", "CUDAFunctor_add"],
+        "mlpbw":["Memset","ampere_bf16_s16816gemm_bf16_128x256_ldg8_f2f_stages_64x3_nt", "ampere_bf16_s16816gemm_bf16_128x256_ldg8_f2f_stages_64x3_nn", "vectorized_elementwise_kernel",
+        "vectorized_elementwise_kernel", "vectorized_elementwise_kernel", "cutlass_80_tensorop_bf16_s16816gemm_bf16_128x256_32x6_nt_align8",
+        "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_32x3_nn", "vectorized_elementwise_kernel", "vectorized_elementwise_kernel", "cutlass_80_tensorop_bf16_s16816gemm_bf16_128x256_32x6_nt_align8",
+        "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_32x3_nn", "vectorized_elementwise_kernel", "vectorized_elementwise_kernel"],
+        "rmsbw":["elementwise_kernel","","reduce_kernel",
+        "vectorized_elementwise_kernel","unrolled_elementwise_kernel","vectorized_elementwise_kernel",
+        "elementwise_kernel","reduce_kernel","vectorized_elementwise_kernel",
+        "vectorized_elementwise_kernel","vectorized_elementwise_kernel",
+        "elementwise_kernel","Memcpy","vectorized_elementwise_kernel",
+        "vectorized_elementwise_kernel","vectorized_elementwise_kernel","unrolled_elementwise_kernel"],
+        "qkvbw":["Memset","ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_32x3_nt", "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_64x3_nn", "vectorized_elementwise_kernel", 
+        "Memset", "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_32x3_nt", "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_64x3_nn", "vectorized_elementwise_kernel", 
+        "vectorized_elementwise_kernel", "Memset", "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_32x3_nt", "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_64x3_nn", "vectorized_elementwise_kernel"],
+        "ropebw":["elementwise_kernel", "elementwise_kernel", "elementwise_kernel", "vectorized_elementwise_kernel", "elementwise_kernel", "vectorized_elementwise_kernel",
+        "elementwise_kernel", "elementwise_kernel", "elementwise_kernel", "elementwise_kernel", "vectorized_elementwise_kernel", "elementwise_kernel", "vectorized_elementwise_kernel",
+        "elementwise_kernel", "vectorized_elementwise_kernel", "elementwise_kernel", "vectorized_elementwise_kernel", "elementwise_kernel", "elementwise_kernel", "elementwise_kernel"],
+        "sftmxbw":["vectorized_elementwise_kernel", "softmax_warp_backward"],
+        "wobw":["Memset", "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_32x3_nt", "ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_64x3_nn", "vectorized_elementwise_kernel"],
+        "dvbw":["cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_32x4_nt_align2", "cutlass_80_tensorop_bf16_s16816gemm_bf16_256x128_32x3_tn_align2"],
+        "qk^tbw":["cutlass_80_tensorop_bf16_s16816gemm_bf16_256x128_32x3_nt_align2", "cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_32x4_tn_align2"]
+    },
+    "stage_coarse_module": {
+        "forward": ["attention", "decodelayer"],
+        "backward": ["attentionbw", "decodelayerbw"]
+    },
+    "stage_fine_module": {
+        "forward": ["mlp", "rms", "qkv", "rope", "qk^t", "sftmx", "dv", "wo"],
+        "backward": ["mlpbw", "rmsbw", "qkvbw", "ropebw", "qk^t", "sftmx", "wobw", "dvbw", "qk^tbw"]
+    },
+    "coarse_module": {
+        "attention":["qkv", "rope", "qk^t", "sftmx", "dv","wo"],
+        "decodelayer":["rms", "qkv", "rope", "qk^t", "sftmx", "dv", "wo", "rms", "mlp"],
+        "attentionbw": ["wobw","dvbw", "sftmxbw", "qk^tbw", "ropebw","qkvbw"],
+        "decodelayerbw":["mlpbw", "rmsbw", "wobw","dvbw", "sftmxbw", "qk^tbw", "ropebw","qkvbw", "rmsbw"]
+    }
+}
