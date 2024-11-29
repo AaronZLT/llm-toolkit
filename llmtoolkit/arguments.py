@@ -325,16 +325,15 @@ def get_args() -> Tuple[ModelArguments, DataArguments, TrainingArguments]:
         )
         training_args.output_dir = key
 
-    print_rank_0(
-        "\n".join(
-            f"{key}: {value}"
-            for key, value in vars(
-                argparse.Namespace(
-                    **vars(model_args), **vars(data_args), **vars(training_args)
-                )
-            ).items()
-        )
+    sorted_vars = sorted(
+        vars(
+            argparse.Namespace(
+                **vars(model_args), **vars(data_args), **vars(training_args)
+            )
+        ).items()
     )
+
+    print_rank_0("\n".join(f"{key}: {value}" for key, value in sorted_vars))
 
     return model_args, data_args, training_args
 
