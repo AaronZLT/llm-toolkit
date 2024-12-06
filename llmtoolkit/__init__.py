@@ -15,6 +15,7 @@ from .callbacks import (
     StepInfoCallback,
 )
 from .dataset import (
+    SFTPrompt,
     build_data_module,
 )
 from .evaluate import (

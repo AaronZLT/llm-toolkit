@@ -94,7 +94,7 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     eval_dataset_size: int = field(
-        default=1024, metadata={"help": "Size of validation dataset."}
+        default=0.1, metadata={"help": "Size of validation dataset."}
     )
     max_train_samples: Optional[int] = field(
         default=None,
@@ -255,7 +255,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         },
     )
     profiler_warmup_step: int = field(
-        default=30, metadata={"help": "profiler_warmup_step. Default = 30 steps."}
+        default=3,
+        metadata={
+            "help": "How many steps to warm up before profiler works. Default = 3 steps."
+        },
     )
     profiler_step_log: bool = field(
         default=False,

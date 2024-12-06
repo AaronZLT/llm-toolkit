@@ -2,9 +2,12 @@ import torch
 
 from .utils import (
     require_lib,
+    gsi,
+    rank_0,
+    print_rank_0,
 )
 
-
+@rank_0
 def single_inference(
     model,
     tokenizer,
@@ -29,8 +32,8 @@ def single_inference(
                 output_scores=False,
                 max_new_tokens=target_max_len,
                 eos_token_id=tokenizer.eos_token_id,
-                top_p=0.95,
-                temperature=0.8,
+                top_p=0.0,
+                temperature=0.1,
             )
         pred_text = tokenizer.decode(
             outputs.sequences[0][len(inputs["input_ids"][0]) :],
@@ -57,48 +60,38 @@ def vllm_inference(
     require_lib("vllm")
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
+    import torch
 
     max_tokens = source_max_len + target_max_len
-    sampling_params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=max_tokens)
-    results = []
+    sampling_params = SamplingParams(temperature=0.0, top_p=0.1, max_tokens=max_tokens)
 
-    if peft_name_or_path:
-        if load_in_4bit:
-            llm = LLM(
-                model=model_name_or_path,
-                dtype=torch.bfloat16,
-                enable_lora=True,
-                max_lora_rank=max_lora_rank,
-                quantization="bitsandbytes",
-                load_format="bitsandbytes",
-            )
-        else:
-            llm = LLM(
-                model=model_name_or_path,
-                dtype=torch.bfloat16,
-                enable_lora=True,
-                max_lora_rank=max_lora_rank,
-            )
-
-        outputs = llm.generate(
-            prompts,
-            sampling_params,
-            lora_request=LoRARequest(peft_name_or_path, 1, peft_name_or_path),
+    if gsi.info["ngpu"] >= 2:
+        print_rank_0('WARNING: 2 or more gpus are detected, and VLLM will use all gpus to inference. However, a RuntimeError may raised: "An attempt has been made to start a new process before the current process ...". To avoid this error, wrap your code within " if __name__ == "__main__": ". This is a bug in VLLM, an expected behavior when tp >= 2 & ray. For more info please refer to https://github.com/vllm-project/vllm/pull/5669.')
+    vllm_kwargs = {
+        "model": model_name_or_path,
+        "dtype": torch.bfloat16,
+        "tensor_parallel_size": gsi.info["ngpu"],
+    }
+    if load_in_4bit:
+        vllm_kwargs.update(
+            {"quantization": "bitsandbytes", "load_format": "bitsandbytes"}
         )
-    else:
-        if load_in_4bit:
-            llm = LLM(
-                model=model_name_or_path,
-                dtype=torch.bfloat16,
-                quantization="bitsandbytes",
-                load_format="bitsandbytes",
-            )
-        else:
-            llm = LLM(model=model_name_or_path, dtype=torch.bfloat16)
+    if peft_name_or_path:
+        vllm_kwargs.update({"enable_lora": True, "max_lora_rank": max_lora_rank})
 
-        outputs = llm.generate(prompts, sampling_params)
+    llm = LLM(**vllm_kwargs)
 
-    for output in outputs:
-        results.append({"prompt": output.prompt, "response": output.outputs[0].text})
+    generate_kwargs = {}
+    if peft_name_or_path:
+        generate_kwargs["lora_request"] = LoRARequest(
+            peft_name_or_path, 1, peft_name_or_path
+        )
+
+    outputs = llm.generate(prompts, sampling_params, **generate_kwargs)
+
+    results = [
+        {"prompt": output.prompt, "response": output.outputs[0].text}
+        for output in outputs
+    ]
 
     return results

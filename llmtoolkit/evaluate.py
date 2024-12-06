@@ -156,22 +156,20 @@ class GSM8KEvaluationStrategy(EvaluationStrategy):
         return golden_numbers == predicate_numbers
 
     def extract_numbers(self, text: str):
-        pattern = r"#### (-?[0-9.,]+)"
-        matches = re.findall(pattern, text)
+        regex = r"(-?(0|([1-9][0-9]*))(\.[\d]+)?)"
+        matches = re.findall(regex, text)
         if matches:
-            result = matches[-1]
+            result = matches[-1][0]
         else:
-            result = ""
-        result = result.replace(",", "")
+            result = 0
+
         try:
             return int(result)
         except ValueError:
             try:
                 return float(result)
             except ValueError:
-                print_rank_0(
-                    f"'{result}' is invalid thus cannot be transformed into numbers"
-                )
+                print(f"'{result}' is invalid thus cannot be transformed into numbers")
                 return 0
 
 

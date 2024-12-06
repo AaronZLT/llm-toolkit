@@ -67,6 +67,11 @@ class PT_ProfCallback(transformers.TrainerCallback):
 
     @rank_0
     def dump_trace(self):
+        if self.warmup_step > self.prof.step_num:
+            print_rank_0(
+                f"Detected the warmup steps ({self.warmup_step}) have exceeded the profiler steps ({self.prof.step_num}), you may not get any profiler infomation."
+            )
+
         self.prof.export_chrome_trace(
             os.path.join(
                 self.output_dir,
@@ -122,6 +127,11 @@ class StepInfoCallback(transformers.TrainerCallback):
     def on_train_end(self, args, state, control, **kwargs):
         accelerator = Accelerator()
         global_step = state.global_step
+
+        if self.warmup_step > global_step:
+            print_rank_0(
+                f"Detected the warmup steps ({self.warmup_step}) have exceeded the global steps ({global_step}), you may not get any profiler infomation."
+            )
 
         # Get the step time
         mean_step_time = round(np.mean(self.step_times[self.warmup_step :]), 3)

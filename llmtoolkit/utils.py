@@ -236,24 +236,29 @@ class hardware_info:
         counter = Counter(gpu_tuple_list)
         for gpu, count in counter.items():
             name, memory = gpu
-            print_rank_0(f"{count} x {name}, Memory: {memory}")
+            print_rank_0(f"{count} x {name}, Memory (GB): {memory}")
 
         print_rank_0(f"Detected {self.n_xpus} XPU(s)")
 
 
 class global_system_info:
     def __init__(self):
+        self.hardware = hardware_info()
+
         self.info = {
-            "hardware": {},
+            "ngpu": self.hardware.n_gpus,
+            "gpu_info": self.hardware.gpu_info,
             "overhead (s)": {},
         }
 
     def dump(self, output_dir):
         safe_dict2file(self.info, os.path.join(output_dir, "system_info.txt"))
+        
+    def __repr__(self):
+        return f"{self.__class__.__name__}(info={self.info})"
 
 
 gsi = global_system_info()
-gsi.info["hardware"] = hardware_info().gpu_info
 
 
 def timeit(func):

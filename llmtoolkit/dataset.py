@@ -96,17 +96,17 @@ Most of the training prompts are aligned with lm-eval, which is the same as 🤗
 
 @dataclass
 class SFTPrompt:
-    default_input: str = "Question: {question}\nAnswer: "
-    default_output: str = "{answer}\n\n"
-    alpaca_input: str = (
+    question: str = "Question: {question}\nAnswer: "
+    answer: str = "{answer}\n\n"
+    instruction_input: str = (
         "Below is an instruction that describes a task, paired with an input that provides further context. "
         "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n#### Input:\n{input}\n\n#### Response: "
+        "#### Instruction:\n{instruction}\n\n#### Input:\n{input}\n\n#### Response: "
     )
-    alpaca_noinput: str = (
+    instruction: str = (
         "Below is an instruction that describes a task. "
         "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n#### Response: "
+        "#### Instruction:\n{instruction}\n\n#### Response: "
     )
     truthfulqa_6shot: str = "\
         Q: What is human life expectancy in the United States?\n\
@@ -122,8 +122,6 @@ class SFTPrompt:
         Q: Where were the 1992 Olympics held?\n\
         A: The 1992 Olympics were held in Barcelona, Spain.\
         \n\nQ: {question}\nA:"
-    math_input: str = "Question: {instruction}\nAnswer: "
-    math_output: str = "{output}\n\n"
 
 
 def extract_super_natural_instructions_data(examples, extract_reformulations=False):
@@ -148,21 +146,28 @@ def extract_super_natural_instructions_data(examples, extract_reformulations=Fal
 def preprocess_alpaca(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
         if example.get("input", "") != "":
-            prompt_format = SFTPrompt.alpaca_input
+            return {
+                "input": SFTPrompt.instruction_input.format(
+                    instruction=example["instruction"], input=example["input"]
+                ),
+                "output": example["output"],
+            }
         else:
-            prompt_format = SFTPrompt.alpaca_noinput
-        return {"input": prompt_format.format(**example)}
+            return {
+                "input": SFTPrompt.instruction.format(
+                    instruction=example["instruction"]
+                ),
+                "output": example["output"],
+            }
 
     return dataset.map(_preprocess_doc)
 
 
 def preprocess_gsm8k(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        prompt_format_input = SFTPrompt.default_input
-        prompt_format_output = SFTPrompt.default_output
         return {
-            "input": prompt_format_input.format(**example),
-            "output": prompt_format_output.format(**example),
+            "input": SFTPrompt.instruction.format(instruction=example["question"]),
+            "output": example["answer"],
         }
 
     return dataset.map(_preprocess_doc)
@@ -170,8 +175,8 @@ def preprocess_gsm8k(dataset: datasets.Dataset) -> datasets.Dataset:
 
 def preprocess_truthfulqa_mc1(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
-        prompt_format_input = SFTPrompt.default_input
-        prompt_format_output = SFTPrompt.default_output
+        prompt_format_input = SFTPrompt.question
+        prompt_format_output = SFTPrompt.answer
         return {
             "input": prompt_format_input.format(**example),
             "output": prompt_format_output.format(**example),
@@ -234,8 +239,8 @@ def preprocess_e2e(dataset: datasets.Dataset) -> datasets.Dataset:
 def preprocess_math(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
         return {
-            "input": SFTPrompt.math_input.format(**example),
-            "output": SFTPrompt.math_output.format(**example),
+            "input": SFTPrompt.question.format(example["question"]),
+            "output": SFTPrompt.answer.format(example["answer"]),
         }
 
     return dataset.map(_preprocess_doc)
@@ -278,9 +283,21 @@ def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
     return dataset.map(_preprocess_doc)
 
 
+def preprocess_metamath(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {
+            "input": SFTPrompt.instruction.format(instruction=example["query"]),
+            "output": example["response"],
+        }
+
+    return dataset.map(_preprocess_doc)
+
+
 """
 Make dataset and collator for supervised fine-tuning.
 Datasets are expected to have the following columns: { `input`, `output` }
+1. in DATASETS_ARGS, please specify the dataset loading behavior, i.e., {"dataset name": ("dataset in huggingface", {dataset split})}, leave 'split' blank if load the dataset in default.
+2. in FORMAT_FUNCTIONS, where to assign a map function (maps each entry in the dataset into trainable form, including cat with prompt, store in the 'input' and 'output' column.)
 """
 DATASETS_ARGS = {
     "alpaca": ("tatsu-lab/alpaca", {}),
@@ -299,6 +316,7 @@ DATASETS_ARGS = {
     "e2e": ("GEM/e2e_nlg", {}),
     "math": ("Lohse/math", {}),
     "commonsense": ("Lohse/commonsense", {}),
+    "metamath": ("meta-math/MetaMathQA", {}),
 }
 
 FORMAT_FUNCTIONS = {
@@ -317,6 +335,7 @@ FORMAT_FUNCTIONS = {
     "e2e": preprocess_e2e,
     "math": preprocess_math,
     "commonsense": preprocess_commonsense,
+    "metamath": preprocess_metamath,
 }
 
 
@@ -392,7 +411,7 @@ def build_data_module(
         eval_dataset = dataset["test"]
     else:
         print_rank_0(
-            "Splitting train dataset in train and validation according to `eval_dataset_size`"
+            f"Splitting train dataset in train and validation according to `eval_dataset_size`({args.eval_dataset_size})"
         )
         dataset = dataset["train"].train_test_split(
             test_size=args.eval_dataset_size, shuffle=True, seed=42
