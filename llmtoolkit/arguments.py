@@ -37,12 +37,13 @@ class ModelArguments:
         default=1,
         metadata={"help": "lora rank, default = 1"},
     )
-    lora_alpha: float = field(default=16, metadata={"help": " Lora alpha."})
-    lora_dropout: float = field(default=0.0, metadata={"help": "Lora dropout."})
+    lora_alpha: float = field(default=16, metadata={"help": " lora alpha. *Deprecate"})
+    lora_scale: float = field(default=1.0, metadata={"help": "lora scale. This serves the overall scale of (lora_alpha/lora_rank). Suggest to pick from [0.5, 1.0, 2.0]. Default is 1.0."})
+    lora_dropout: float = field(default=0.0, metadata={"help": "lora dropout."})
     lora_percent: Optional[float] = field(
         default=1.0,
         metadata={
-            "help": "Lora layers percentage from 0-1. Default is 1.0, i.e., 100% lora layers will be applied. *FOR TEST ONLY DO NOT USE*"
+            "help": "lora layers percentage from 0-1. Default is 1.0, i.e., 100% lora layers will be applied. *FOR TEST ONLY DO NOT USE*"
         },
     )
     init_lora_weights: str = field(
@@ -266,6 +267,12 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
             "help": "Profile with detailed log (every step): train/eval loss, etc. Default = False"
         },
     )
+    parallelism: str = field(
+        default='dp',
+        metadata={
+            "help": "Training parallelism, choose from dp|pp, default is dp. This is supported by transformers and accelerate."
+        },
+    )
     debug_mode: bool = field(default=False, metadata={"help": "Turn on debug mode."})
 
 
@@ -356,7 +363,7 @@ def get_unique_key(
         "seq": f"seq{args.source_max_len + args.target_max_len}",
         "lr": f"lr{args.learning_rate}",
         "peft": args.peft,
-        "lora_r": f"r{args.lora_r}" if args.peft else None,
+        "lora_rank": f"r{args.lora_rank}" if args.peft else None,
         "flash-attn": "flash-attn" if args.flash_attn else None,
         "checkpointing": "checkpointing" if args.gradient_checkpointing else None,
         "quant": "quant" if args.quant else None,

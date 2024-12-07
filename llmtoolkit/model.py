@@ -95,8 +95,8 @@ def peft_model(model, args: ModelArguments):
 
         if args.peft == "lora":
             config = LoraConfig(
-                r=args.lora_r,
-                lora_alpha=2 * args.lora_r,
+                r=args.lora_rank,
+                lora_alpha=int(args.lora_scale * args.lora_rank),
                 target_modules=modules,
                 lora_dropout=args.lora_dropout,
                 bias="none",
@@ -108,8 +108,8 @@ def peft_model(model, args: ModelArguments):
             _peft_model = get_peft_model(model, config)
         elif args.peft == "lora-fa":
             config = LoraConfig(
-                r=args.lora_r,
-                lora_alpha=2 * args.lora_r,
+                r=args.lora_rank,
+                lora_alpha=int(args.lora_scale * args.lora_rank),
                 target_modules=modules,
                 lora_dropout=args.lora_dropout,
                 bias="none",
@@ -124,9 +124,9 @@ def peft_model(model, args: ModelArguments):
                     param.requires_grad_(False)
         elif args.peft == "dora":
             config = LoraConfig(
-                r=args.lora_r,
+                r=args.lora_rank,
                 use_dora=True,
-                lora_alpha=2 * args.lora_r,
+                lora_alpha=int(args.lora_scale * args.lora_rank),
                 target_modules=modules,
                 lora_dropout=args.lora_dropout,
                 bias="none",
@@ -134,7 +134,7 @@ def peft_model(model, args: ModelArguments):
             )
             _peft_model = get_peft_model(model, config)
         elif args.peft == "vera":
-            config = VeraConfig(r=args.lora_r, target_modules=modules)
+            config = VeraConfig(r=args.lora_rank, target_modules=modules)
             _peft_model = get_peft_model(model, config)
     elif args.peft == "prefix":
         config = PrefixTuningConfig(
@@ -179,50 +179,36 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     else:
         assert model_args.bits in [8, 4, 2, 1]
 
-    print_rank_0(f"loading base model {model_args.model_name_or_path}...")
     compute_dtype = (
         torch.float16
         if training_args.fp16
         else (torch.bfloat16 if training_args.bf16 else torch.float32)
     )
+    pretrained_model_kwargs = {
+        "pretrained_model_name_or_path": model_args.model_name_or_path,
+        "attn_implementation": attn_implementation,
+        "torch_dtype": compute_dtype,
+    }
+    if training_args.parallelism == "pp":
+        pretrained_model_kwargs.update({"device_map": "auto"})
     if model_args.quant:
-        print_rank_0("LOADING QUANTIZED MODEL")
-        model = AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path,
-            attn_implementation=attn_implementation,
-            device_map="auto",
-            quantization_config=BitsAndBytesConfig(
-                load_in_4bit=model_args.bits == 4,
-                load_in_8bit=model_args.bits == 8,
-                llm_int8_threshold=6.0,
-                llm_int8_has_fp16_weight=False,
-                bnb_4bit_compute_dtype=compute_dtype,
-                bnb_4bit_use_double_quant=model_args.double_quant,
-                bnb_4bit_quant_type=model_args.quant_type,
-                bnb_4bit_quant_storage=model_args.quant_storage,
-            ),
-            torch_dtype=(
-                torch.float16
-                if training_args.fp16
-                else (torch.bfloat16 if training_args.bf16 else torch.float32)
-            ),
-            trust_remote_code=model_args.trust_remote_code,
-            use_auth_token=model_args.use_auth_token,
+        pretrained_model_kwargs.update(
+            {
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=model_args.bits == 4,
+                    load_in_8bit=model_args.bits == 8,
+                    llm_int8_threshold=6.0,
+                    llm_int8_has_fp16_weight=False,
+                    bnb_4bit_compute_dtype=compute_dtype,
+                    bnb_4bit_use_double_quant=model_args.double_quant,
+                    bnb_4bit_quant_type=model_args.quant_type,
+                    bnb_4bit_quant_storage=model_args.quant_storage,
+                )
+            }
         )
-    else:
-        print_rank_0("LOADING UNQUANTIZED MODEL")
-        model = AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path,
-            attn_implementation=attn_implementation,
-            device_map="auto",
-            torch_dtype=(
-                torch.float16
-                if training_args.fp16
-                else (torch.bfloat16 if training_args.bf16 else torch.float32)
-            ),
-            trust_remote_code=model_args.trust_remote_code,
-            use_auth_token=model_args.use_auth_token,
-        )
+    print_rank_0(f"Loading base model from {model_args.model_name_or_path}.")
+    model = AutoModelForCausalLM.from_pretrained(**pretrained_model_kwargs)
+
     if compute_dtype == torch.float16 and model_args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print_rank_0("=" * 80)
@@ -236,9 +222,10 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     ):
         compute_dtype = torch.bfloat16
         print_rank_0("Intel XPU does not support float16 yet, so switching to bfloat16")
-
-    # setattr(model, 'model_parallel', True)
-    # setattr(model, 'is_parallelizable', True)
+    
+    if training_args.parallelism == "pp":
+        setattr(model, 'model_parallel', True)
+        setattr(model, 'is_parallelizable', True)
 
     model.config.torch_dtype = (
         torch.float16

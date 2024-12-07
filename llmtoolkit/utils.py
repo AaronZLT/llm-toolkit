@@ -228,6 +228,7 @@ class hardware_info:
         self.xpu_info = []
         self.n_xpus = torch.xpu.device_count()
 
+    @rank_0
     def summary(self):
         print_rank_0(f"Detected {self.n_gpus} GPU(s)")
         gpu_tuple_list = [
@@ -236,7 +237,7 @@ class hardware_info:
         counter = Counter(gpu_tuple_list)
         for gpu, count in counter.items():
             name, memory = gpu
-            print_rank_0(f"{count} x {name}, Memory (GB): {memory}")
+            print_rank_0(f"{count} x {name}, Memory per GPU (GB): {memory}")
 
         print_rank_0(f"Detected {self.n_xpus} XPU(s)")
 

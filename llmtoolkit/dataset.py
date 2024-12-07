@@ -432,6 +432,16 @@ def build_data_module(
     train_dataset = train_dataset.map(
         lambda x: {"length": len(x["input"]) + len(x["output"])}
     )
+    longest_sequence = max(train_dataset, key=lambda x: x["length"])
+    longest_sequence_length = len(tokenizer(longest_sequence["input"])["input_ids"]) + len(tokenizer(longest_sequence["output"])["input_ids"])
+    if (
+        longest_sequence_length >= args.source_max_len + args.target_max_len
+        and not args.hard_padding
+    ):
+        print_rank_0(
+            f"WARNING: You choose not to pad all sequences to the max same length (max_input_token = source_max_len + target_max_len = {args.source_max_len+args.target_max_len}) since hard_padding is False. However, at least 1 sequence in the dataset has exceeded the max length ({longest_sequence_length}), which may ultimately cause OOM during the training. To avoid OOM, try few steps with --hard_padding True before training."
+        )
+
     for index in random.sample(range(len(train_dataset)), 3):
         print_rank_0(f"Sample {index} of the training set:\n{train_dataset[index]}.")
 
