@@ -37,6 +37,7 @@ _deps = [
     "matplotlib",
     "lm-eval",
     "wandb",
+    "accelerate",
 ]
 
 deps = {
@@ -63,6 +64,7 @@ install_requires = [
     deps["matplotlib"],
     deps["lm-eval"],
     deps["wandb"],
+    deps["accelerate"],
 ]
 
 setuptools.setup(

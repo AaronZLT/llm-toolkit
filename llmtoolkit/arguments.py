@@ -293,16 +293,16 @@ class GenerationArguments:
     )
 
     # Generation strategy
-    do_sample: Optional[bool] = field(default=False)
+    do_sample: Optional[bool] = field(default=True)
     num_beams: Optional[int] = field(default=1)
     num_beam_groups: Optional[int] = field(default=1)
     penalty_alpha: Optional[float] = field(default=None)
     use_cache: Optional[bool] = field(default=True)
 
     # Hyperparameters for logit manipulation
-    temperature: Optional[float] = field(default=1.0)
+    temperature: Optional[float] = field(default=0.0)
     top_k: Optional[int] = field(default=50)
-    top_p: Optional[float] = field(default=1.0)
+    top_p: Optional[float] = field(default=0.1)
     typical_p: Optional[float] = field(default=1.0)
     diversity_penalty: Optional[float] = field(default=0.0)
     repetition_penalty: Optional[float] = field(default=1.0)
