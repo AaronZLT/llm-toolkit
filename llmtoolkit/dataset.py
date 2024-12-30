@@ -317,6 +317,7 @@ DATASETS_ARGS = {
     "math": ("Lohse/math", {}),
     "commonsense": ("Lohse/commonsense", {}),
     "metamath": ("meta-math/MetaMathQA", {}),
+    "metamath40k": ("meta-math/MetaMathQA-40K", {}),
 }
 
 FORMAT_FUNCTIONS = {
@@ -336,6 +337,7 @@ FORMAT_FUNCTIONS = {
     "math": preprocess_math,
     "commonsense": preprocess_commonsense,
     "metamath": preprocess_metamath,
+    "metamath40k": preprocess_metamath,
 }
 
 
