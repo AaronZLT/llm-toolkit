@@ -30,7 +30,7 @@ class ModelArguments:
     peft: Optional[str] = field(
         default=None,
         metadata={
-            "help": "To use peft, choose from [lora|lora-fa|vera|dora|prompt|embedding]"
+            "help": "To use peft, choose from [lora|lorafa|vera|dora|prompt|embedding]"
         },
     )
     lora_rank: int = field(

@@ -57,7 +57,7 @@ def find_all_linear_names(model, bits):
 
 @timeit
 def peft_model(model, args: ModelArguments):
-    if args.peft in ["lora", "lora-fa", "vera", "dora"]:
+    if args.peft in ["lora", "lorafa", "vera", "dora"]:
         attention_modules = [
             "query",
             "q_proj",
@@ -106,7 +106,7 @@ def peft_model(model, args: ModelArguments):
                 else True,
             )
             _peft_model = get_peft_model(model, config)
-        elif args.peft == "lora-fa":
+        elif args.peft == "lorafa":
             config = LoraConfig(
                 r=args.lora_rank,
                 lora_alpha=int(args.lora_scale * args.lora_rank),
