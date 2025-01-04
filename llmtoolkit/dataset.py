@@ -292,6 +292,23 @@ def preprocess_metamath(dataset: datasets.Dataset) -> datasets.Dataset:
 
     return dataset.map(_preprocess_doc)
 
+def preprocess_wizardlm(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {
+            "input": SFTPrompt.instruction.format(instruction=example["instruction"]),
+            "output": example["output"],
+        }
+
+    return dataset.map(_preprocess_doc)
+
+def preprocess_codefeedback(dataset: datasets.Dataset) -> datasets.Dataset:
+    def _preprocess_doc(example):
+        return {
+            "input": SFTPrompt.instruction.format(instruction=example["query"]),
+            "output": example["answer"],
+        }
+
+    return dataset.map(_preprocess_doc)
 
 """
 Make dataset and collator for supervised fine-tuning.
@@ -318,6 +335,8 @@ DATASETS_ARGS = {
     "commonsense": ("Lohse/commonsense", {}),
     "metamath": ("meta-math/MetaMathQA", {}),
     "metamath40k": ("meta-math/MetaMathQA-40K", {}),
+    "wizardlm70k": ("WizardLMTeam/WizardLM_evol_instruct_70k", {}),
+    "codefeedback": ("m-a-p/CodeFeedback-Filtered-Instruction", {}),
 }
 
 FORMAT_FUNCTIONS = {
@@ -338,6 +357,8 @@ FORMAT_FUNCTIONS = {
     "commonsense": preprocess_commonsense,
     "metamath": preprocess_metamath,
     "metamath40k": preprocess_metamath,
+    "wizardlm70k": preprocess_wizardlm,
+    "codefeedback": preprocess_codefeedback,
 }
 
 

@@ -297,7 +297,7 @@ class GenerationArguments:
     num_beams: Optional[int] = field(default=1)
     num_beam_groups: Optional[int] = field(default=1)
     penalty_alpha: Optional[float] = field(default=None)
-    use_cache: Optional[bool] = field(default=True)
+    use_cache: Optional[bool] = field(default=False)
 
     # Hyperparameters for logit manipulation
     temperature: Optional[float] = field(default=0.0)
