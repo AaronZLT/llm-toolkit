@@ -38,7 +38,12 @@ class ModelArguments:
         metadata={"help": "lora rank, default = 1"},
     )
     lora_alpha: float = field(default=16, metadata={"help": " lora alpha. *Deprecate"})
-    lora_scale: float = field(default=1.0, metadata={"help": "lora scale. This serves the overall scale of (lora_alpha/lora_rank). Suggest to pick from [0.5, 1.0, 2.0]. Default is 1.0."})
+    lora_scale: float = field(
+        default=1.0,
+        metadata={
+            "help": "lora scale. This serves the overall scale of (lora_alpha/lora_rank). Suggest to pick from [0.5, 1.0, 2.0]. Default is 1.0."
+        },
+    )
     lora_dropout: float = field(default=0.0, metadata={"help": "lora dropout."})
     lora_percent: Optional[float] = field(
         default=1.0,
@@ -88,6 +93,20 @@ class ModelArguments:
         default=16,
         metadata={
             "help": "How many bits to use. In general we use --bf16 training, here the bits is 16."
+        },
+    )
+    sparse: bool = field(
+        default=False,
+        metadata={"help": "Do sparse on the base model. Default is False."},
+    )
+    structured_sparse: bool = field(
+        default=False,
+        metadata={"help": "Do structured sparse on the base model. Default is False. Enable this will ingore the unstructured sparsity ratio, a default 2:4 sparse will be used. Need --sparse True."},
+    )
+    sparsity_ratio: float = field(
+        default=1.0,
+        metadata={
+            "help": "Sparse raito of base model. For example, 0.5 indicates half of the parameters in a linear is 0."
         },
     )
 
@@ -268,7 +287,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         },
     )
     parallelism: str = field(
-        default='dp',
+        default="dp",
         metadata={
             "help": "Training parallelism, choose from dp|pp, default is dp. This is supported by transformers and accelerate."
         },
@@ -369,6 +388,7 @@ def get_unique_key(
         "quant": "quant" if args.quant else None,
         "compute_type": "fp16" if args.fp16 else "bf16" if args.bf16 else "fp32",
         "deepspeed": args.deepspeed,
+        "sparse": f"sparse{args.sparsity_ratio}" if args.sparse and not args.structured_sparse else "sparse2:4" if args.sparse and args.structured_sparse else None
     }
     key = ".".join(value for value in config_dict.values() if value is not None)
 

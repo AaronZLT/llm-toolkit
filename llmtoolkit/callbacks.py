@@ -187,7 +187,8 @@ class StepInfoCallback(transformers.TrainerCallback):
         # Dump the profile result to profiler.txt
         profile_dict = {}
         profile_dict["key"] = self.key
-        profile_dict["batch_size"] = state.train_batch_size
+        profile_dict["per_device_batch_size"] = state.train_batch_size
+        profile_dict["global_batch_size"] = state.train_batch_size * get_world_size()
         profile_dict["trainable_parameter"] = self.trainable_param
         profile_dict["step_time (s)"] = mean_step_time
         profile_dict["step_time_std (s)"] = std_step_time
