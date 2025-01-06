@@ -43,7 +43,8 @@ from .train_no_trainer import (
     train_no_trainer,
 )
 from .trainer import (
-    Seq2SeqTrainer_llmtoolkit,
+    BaseSeq2SeqTrainer,
+    Seq2SeqTrainer_lorafa,
 )
 from .inference import (
     single_inference,

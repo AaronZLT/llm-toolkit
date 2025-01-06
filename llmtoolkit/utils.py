@@ -254,7 +254,7 @@ class global_system_info:
 
     def dump(self, output_dir):
         safe_dict2file(self.info, os.path.join(output_dir, "system_info.txt"))
-        
+
     def __repr__(self):
         return f"{self.__class__.__name__}(info={self.info})"
 

@@ -101,7 +101,9 @@ class ModelArguments:
     )
     structured_sparse: bool = field(
         default=False,
-        metadata={"help": "Do structured sparse on the base model. Default is False. Enable this will ingore the unstructured sparsity ratio, a default 2:4 sparse will be used. Need --sparse True."},
+        metadata={
+            "help": "Do structured sparse on the base model. Default is False. Enable this will ingore the unstructured sparsity ratio, a default 2:4 sparse will be used. Need --sparse True."
+        },
     )
     sparsity_ratio: float = field(
         default=1.0,
@@ -191,8 +193,12 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         metadata={"help": "The output dir for logs and checkpoints"},
     )
     optim: str = field(
-        default="adamw_hf", metadata={"help": "The optimizer to be used"}
+        default="adamw_hf",
+        metadata={
+            "help": "The optimizer to be used. Choose adamw_lorafa to use AdamW_lorafa. For now please use --adamw_lorafa True."
+        },
     )
+    adamw_lorafa: bool = field(default=False, metadata={"help": "Use AdamW_lorafa."})
     per_device_train_batch_size: int = field(
         default=1,
         metadata={
@@ -388,7 +394,11 @@ def get_unique_key(
         "quant": "quant" if args.quant else None,
         "compute_type": "fp16" if args.fp16 else "bf16" if args.bf16 else "fp32",
         "deepspeed": args.deepspeed,
-        "sparse": f"sparse{args.sparsity_ratio}" if args.sparse and not args.structured_sparse else "sparse2:4" if args.sparse and args.structured_sparse else None
+        "sparse": f"sparse{args.sparsity_ratio}"
+        if args.sparse and not args.structured_sparse
+        else "sparse2:4"
+        if args.sparse and args.structured_sparse
+        else None,
     }
     key = ".".join(value for value in config_dict.values() if value is not None)
 

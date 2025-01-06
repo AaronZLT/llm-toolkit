@@ -158,7 +158,7 @@ def peft_model(model, args: ModelArguments):
         _peft_model = model
         for name, param in _peft_model.named_parameters():
             if "embed" not in name:
-                param.requires_grad = False
+                param.requires_grad_(False)
     else:
         _peft_model = model
 
@@ -211,7 +211,7 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
         )
     print_rank_0(f"Loading base model from {model_args.model_name_or_path}.")
     model = AutoModelForCausalLM.from_pretrained(**pretrained_model_kwargs)
-    
+
     if model_args.sparse:
         if model_args.structured_sparse:
             prune_magnitude(model, prune_n=2, prune_m=4)
@@ -231,10 +231,10 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     ):
         compute_dtype = torch.bfloat16
         print_rank_0("Intel XPU does not support float16 yet, so switching to bfloat16")
-    
+
     if training_args.parallelism == "pp":
-        setattr(model, 'model_parallel', True)
-        setattr(model, 'is_parallelizable', True)
+        setattr(model, "model_parallel", True)
+        setattr(model, "is_parallelizable", True)
 
     model.config.torch_dtype = (
         torch.float16

@@ -7,6 +7,7 @@ from transformers import (
     set_seed,
 )
 from accelerate.utils import DistributedType
+from peft import PeftModel
 
 from .arguments import (
     ModelArguments,
@@ -28,7 +29,8 @@ from .model import (
     print_trainable_parameters,
 )
 from .trainer import (
-    Seq2SeqTrainer_llmtoolkit,
+    BaseSeq2SeqTrainer,
+    Seq2SeqTrainer_lorafa,
 )
 from .utils import (
     print_rank_0,
@@ -55,14 +57,26 @@ def train(
         model, training_args.debug_mode
     )
 
-    trainer = Seq2SeqTrainer_llmtoolkit(
-        model=model,
-        tokenizer=tokenizer,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        data_collator=data_collator,
-    )
+    if training_args.adamw_lorafa and isinstance(model, PeftModel):
+        trainer = Seq2SeqTrainer_lorafa(
+            lora_scale=model.peft_config["default"].lora_alpha
+            / model.peft_config["default"].r,
+            model=model,
+            tokenizer=tokenizer,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+        )
+    else:
+        trainer = BaseSeq2SeqTrainer(
+            model=model,
+            tokenizer=tokenizer,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+        )
 
     try:
         print_rank_0(f"device map: {model.hf_device_map}")
@@ -156,7 +170,7 @@ def train_cli(
         tokenizer, data_args.dataset_name_or_path, data_args
     )
 
-    trainer = Seq2SeqTrainer_llmtoolkit(
+    trainer = BaseSeq2SeqTrainer(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
