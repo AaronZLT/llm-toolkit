@@ -9,6 +9,7 @@ from peft import PeftModel
 from llmtoolkit import (
     infly_evaluate,
     safe_dict2file,
+    print_rank_0,
 )
 
 
@@ -36,6 +37,7 @@ def eval(
         base_tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
         peft_tokenizer = AutoTokenizer.from_pretrained(peft_model_name_or_path)
         if len(base_tokenizer) != len(peft_tokenizer):
+            print_rank_0(f"Since the embedding of base model mismatch peft adapter ({len(base_tokenizer)} - {len(peft_tokenizer)}), merging.")
             model = AutoModelForCausalLM.from_pretrained(base_model_name_or_path)
             model.resize_token_embeddings(len(peft_tokenizer))
             model = PeftModel.from_pretrained(model, peft_model_name_or_path)
@@ -78,14 +80,14 @@ ckpts = [
 if __name__ == "__main__":
     for ckpt in ckpts:
         eval(
-            model_name_or_path="meta-llama/Llama-2-7b-hf",
-            peft_name_or_path=ckpt,
+            base_model_name_or_path="meta-llama/Llama-2-7b-hf",
+            peft_model_name_or_path=ckpt,
             load_in_4bit=False,
         )
 
     for ckpt in ckpts:
         eval(
-            model_name_or_path="meta-llama/Llama-2-7b-hf",
-            peft_name_or_path=ckpt,
+            base_model_name_or_path="meta-llama/Llama-2-7b-hf",
+            peft_model_name_or_path=ckpt,
             load_in_4bit=True,
         )
