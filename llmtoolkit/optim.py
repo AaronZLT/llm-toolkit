@@ -14,10 +14,6 @@ from torch.cuda.amp import autocast
 
 import math
 
-from .utils import (
-    print_rank_0,
-)
-
 
 class AdamW_lorafa(Optimizer):
     def __init__(
@@ -112,9 +108,6 @@ class AdamW_lorafa(Optimizer):
                 if len(param_list) == 2:
                     A = param_list[0]
                     B = param_list[1]
-                    print_rank_0(
-                        f"Optimizing layer {name_list[0]} and layer {name_list[1]}"
-                    )
                     # grad_A_orin = A.grad
                     grad_B_orin = B.grad
 
