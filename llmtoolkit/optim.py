@@ -14,79 +14,71 @@ from torch.cuda.amp import autocast
 
 import math
 
+from .utils import (
+    print_rank_0,
+)
 
-def _dispatch_sqrt(
-    x: float,
-):  # float annotation is needed because of torchscript type inference
-    if not torch.jit.is_scripting() and isinstance(x, torch.Tensor):
-        return x.sqrt()
-    else:
-        return math.sqrt(x)
-
-
-def _get_value(x):
-    # item is significantly faster than a cpu tensor in eager mode
-    if not torch.jit.is_scripting() and is_compiling():
-        return x
-    else:
-        return x.item() if isinstance(x, torch.Tensor) else x
-
-
-def _get_scalar_dtype():
-    return (
-        torch.float64 if torch.get_default_dtype() == torch.float64 else torch.float32
-    )
-
-
-class AdamW_lorafa(Optimizer):
+class AdamW(Optimizer):
     def __init__(
         self,
         params: Iterable[nn.parameter.Parameter],
-        lr: Union[float, Tensor] = 1e-3,
+        lr: float = 1e-3,
         betas: Tuple[float, float] = (0.9, 0.999),
-        eps: float = 1e-8,
-        weight_decay: float = 0,
-        amsgrad: bool = False,
-        maximize: bool = False,
-        differentiable: bool = False,
+        eps: float = 1e-6,
+        weight_decay: float = 0.0,
+        correct_bias: bool = True,
+        no_deprecation_warning: bool = False,
     ):
-        # todo: assert all lora_A is untrainable, and all lora_B is trainable.
-        if not 0.0 <= lr:
-            raise ValueError(f"Invalid learning rate: {lr}")
-        if not 0.0 <= eps:
-            raise ValueError(f"Invalid epsilon value: {eps}")
+        if lr < 0.0:
+            raise ValueError(f"Invalid learning rate: {lr} - should be >= 0.0")
         if not 0.0 <= betas[0] < 1.0:
-            raise ValueError(f"Invalid beta parameter at index 0: {betas[0]}")
+            raise ValueError(
+                f"Invalid beta parameter: {betas[0]} - should be in [0.0, 1.0)"
+            )
         if not 0.0 <= betas[1] < 1.0:
-            raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
-        if not 0.0 <= weight_decay:
-            raise ValueError(f"Invalid weight_decay value: {weight_decay}")
-
-        self.step_ = 0
-        defaults = dict(
-            lr=lr,
-            betas=betas,
-            eps=eps,
-            weight_decay=weight_decay,
-            amsgrad=amsgrad,
-            maximize=maximize,
-            differentiable=differentiable,
-        )
+            raise ValueError(
+                f"Invalid beta parameter: {betas[1]} - should be in [0.0, 1.0)"
+            )
+        if not 0.0 <= eps:
+            raise ValueError(f"Invalid epsilon value: {eps} - should be >= 0.0")
+        defaults = {
+            "lr": lr,
+            "betas": betas,
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "correct_bias": correct_bias,
+        }
         super().__init__(params, defaults)
 
     def is_same(self, name_list):
         return name_list[0].split(".")[:-3] == name_list[1].split(".")[:-3]
 
-    def step_efficient(self):
-        for group in self.param_groups:
-            beta1, beta2 = group["betas"]
-            scaling_factor = group["scaling_factor"]
+    @torch.no_grad()
+    def step(self, closure: Callable = None):
+        """
+        Performs a single optimization step.
 
+        Arguments:
+            closure (`Callable`, *optional*): A closure that reevaluates the model and returns the loss.
+        """
+        loss = None
+        if closure is not None:
+            loss = closure()
+
+        for group in self.param_groups:
+            scaling_factor = group["scaling_factor"]
             param_list = []
             name_list = []
             for p, n in zip(group["params"], group["names"]):
+                # for p in group["params"]:
+                # Skip non-lora no-grad module, since we need lora_A which is no-grad.
                 if "lora" not in n and p.grad is None:
                     continue
+                grad = p.grad
+                if grad.is_sparse:
+                    raise RuntimeError(
+                        "Adam does not support sparse gradients, please consider SparseAdam instead"
+                    )
 
                 if "lora" in n:
                     param_list.append(p)
@@ -99,58 +91,28 @@ class AdamW_lorafa(Optimizer):
                 else:
                     name = n
 
+                # param_list -> [A,B]
+
                 state = self.state[name]
-
-                # Lazy state initialization
+                # State initialization
                 if len(state) == 0:
-                    # note(crcrpar): [special device hosting for step]
-                    # Deliberately host `step` on CPU if both capturable and fused are off.
-                    # This is because kernel launches are costly on CUDA and XLA.
                     if len(param_list) == 2:
-                        state["step"] = torch.tensor(0.0, dtype=_get_scalar_dtype())
-
+                        state["step"] = 0
                         # Exponential moving average of gradient values
-                        # state["exp_avg_A"] = torch.zeros(param_list[0].shape).to(p.device).to(p.dtype)
-                        state["exp_avg_B"] = (
-                            torch.zeros(param_list[1].shape).to(p.device).to(p.dtype)
-                        )
-
+                        state["exp_avg_B"] = torch.zeros_like(param_list[1])
                         # Exponential moving average of squared gradient values
-                        # state["exp_avg_sq_A"] = torch.zeros(param_list[0].shape).to(p.device).to(p.dtype)
-                        state["exp_avg_sq_B"] = (
-                            torch.zeros(param_list[1].shape).to(p.device).to(p.dtype)
-                        )
-
-                        if group["amsgrad"]:
-                            # Maintains max of all exp. moving avg. of sq. grad. values
-                            # state["max_exp_avg_sq_A"] = torch.zeros(param_list[0].shape).to(p.device).to(p.dtype)
-                            state["max_exp_avg_sq_B"] = (
-                                torch.zeros(param_list[1].shape)
-                                .to(p.device)
-                                .to(p.dtype)
-                            )
+                        state["exp_avg_sq_B"] = torch.zeros_like(param_list[1])
                     else:
-                        state["step"] = torch.tensor(0.0, dtype=_get_scalar_dtype())
-
+                        state["step"] = 0
                         # Exponential moving average of gradient values
-                        state["exp_avg"] = torch.zeros(p.shape).to(p.device).to(p.dtype)
-
+                        state["exp_avg"] = torch.zeros_like(p)
                         # Exponential moving average of squared gradient values
-                        state["exp_avg_sq"] = (
-                            torch.zeros(p.shape).to(p.device).to(p.dtype)
-                        )
+                        state["exp_avg_sq"] = torch.zeros_like(p)
 
-                        if group["amsgrad"]:
-                            # Maintains max of all exp. moving avg. of sq. grad. values
-                            state["max_exp_avg_sq"] = (
-                                torch.zeros(p.shape).to(p.device).to(p.dtype)
-                            )
-
-                # step
                 if len(param_list) == 2:
-                    # note: param_list = [A, B]
                     A = param_list[0]
                     B = param_list[1]
+                    print_rank_0(f"Optimizing layer {name_list[0]} and layer {name_list[1]}")
                     # grad_A_orin = A.grad
                     grad_B_orin = B.grad
 
@@ -162,114 +124,64 @@ class AdamW_lorafa(Optimizer):
                     # B_TB = B.T @ B
                     AA_T_inv = torch.linalg.pinv(
                         AA_T + delta * torch.eye(A.shape[0]).to(A.device)
-                    ).to(torch.bfloat16)
+                    )
                     # B_TB_inv = torch.linalg.pinv(B_TB + delta * torch.eye(A.shape[0]).to(A.device))
 
-                    # grad_A = (1 / scaling_factor ** 2) * B_TB_inv @ grad_A_orin + X @ A
-                    # grad_B = (1 / scaling_factor ** 2) * ((torch.eye(B.shape[0]).to(B.device) - B @ B_TB_inv @ B.T) @ grad_B_orin @ AA_T_inv) - B @ X
-
-                    with autocast(dtype=torch.float32):
+                    with autocast(dtype=torch.bfloat16):
                         grad_B = (1 / scaling_factor**2) * (grad_B_orin @ AA_T_inv)
-                    grad_B = grad_B.to(B.grad.dtype)
+                    if grad_B.dtype != B.grad.dtype:
+                        grad_B = grad_B.to(B.grad.dtype)
 
-                    # exp_avg_A = state["exp_avg_A"]
-                    # exp_avg_sq_A = state["exp_avg_sq_A"]
+                    exp_avg_B, exp_avg_sq_B = state["exp_avg_B"], state["exp_avg_sq_B"]
+                    beta1, beta2 = group["betas"]
+                    state["step"] += 1
+                    exp_avg_B.mul_(beta1).add_(grad_B, alpha=(1.0 - beta1))
+                    exp_avg_sq_B.mul_(beta2).addcmul_(grad_B, grad_B, value=1.0 - beta2)
 
-                    exp_avg_B = state["exp_avg_B"]
-                    exp_avg_sq_B = state["exp_avg_sq_B"]
-
-                    step_t = state["step"]
-
-                    step_t += 1
-
-                    # exp_avg_A.lerp_(grad_A, 1 - beta1)
-                    exp_avg_B.lerp_(grad_B, 1 - beta1)
-                    # exp_avg_sq_A.mul_(beta2).addcmul_(grad_A, grad_A.conj(), value=1 - beta2)
-                    exp_avg_sq_B.mul_(beta2).addcmul_(
-                        grad_B, grad_B.conj(), value=1 - beta2
-                    )
-
-                    step = _get_value(step_t)
-
-                    bias_correction1 = 1 - beta1**step
-                    bias_correction2 = 1 - beta2**step
-
+                    denom_B = exp_avg_sq_B.sqrt().add_(group["eps"])
                     step_size = group["lr"]
-
-                    bias_correction2_sqrt = _dispatch_sqrt(bias_correction2)
-
-                    if group["amsgrad"]:
-                        # Maintains the maximum of all 2nd moment running avg. till now
-                        # torch.maximum(state["max_exp_avg_sq_A"], exp_avg_sq_A, out=state["max_exp_avg_sq_A"])
-                        torch.maximum(
-                            state["max_exp_avg_sq_B"],
-                            exp_avg_sq_B,
-                            out=state["max_exp_avg_sq_B"],
+                    if group["correct_bias"]:  # No bias correction for Bert
+                        bias_correction1 = 1.0 - beta1 ** state["step"]
+                        bias_correction2 = 1.0 - beta2 ** state["step"]
+                        step_size = (
+                            step_size * math.sqrt(bias_correction2) / bias_correction1
                         )
-
-                        # Use the max. for normalizing running avg. of gradient
-                        # denom_A = (state["max_exp_avg_sq_A"].sqrt() / bias_correction2_sqrt).add_(group['eps'])
-                        denom_B = (
-                            state["max_exp_avg_sq_B"].sqrt() / bias_correction2_sqrt
-                        ).add_(group["eps"])
-                    else:
-                        # denom_A = (exp_avg_sq_A.sqrt() / bias_correction2_sqrt).add_(group['eps'])
-                        denom_B = (exp_avg_sq_B.sqrt() / bias_correction2_sqrt).add_(
-                            group["eps"]
-                        )
-
-                    if group["weight_decay"] != 0:
-                        # A.mul_(1 - group["weight_decay"] * group["lr"])
-                        B.mul_(1 - group["weight_decay"] * group["lr"])
-
-                    # A.addcdiv_(exp_avg_A / bias_correction1, denom_A, value=-step_size)
-                    B.addcdiv_(exp_avg_B / bias_correction1, denom_B, value=-step_size)
+                    B.addcdiv_(exp_avg_B, denom_B, value=-step_size)
+                    if group["weight_decay"] > 0.0:
+                        B.add_(B, alpha=(-group["lr"] * group["weight_decay"]))
                     param_list = []
                     name_list = []
                 else:
-                    grad = p.grad
-                    exp_avg = state["exp_avg"]
-                    exp_avg_sq = state["exp_avg_sq"]
-                    step_t = state["step"]
+                    exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+                    beta1, beta2 = group["betas"]
 
-                    step_t += 1
+                    state["step"] += 1
 
                     # Decay the first and second moment running average coefficient
                     # In-place operations to update the averages at the same time
-                    exp_avg.lerp_(grad, 1 - beta1)
-                    exp_avg_sq.mul_(beta2).addcmul_(grad, grad.conj(), value=1 - beta2)
-
-                    step = _get_value(step_t)
-
-                    bias_correction1 = 1 - beta1**step
-                    bias_correction2 = 1 - beta2**step
+                    exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                    exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
+                    denom = exp_avg_sq.sqrt().add_(group["eps"])
 
                     step_size = group["lr"]
+                    if group["correct_bias"]:  # No bias correction for Bert
+                        bias_correction1 = 1.0 - beta1 ** state["step"]
+                        bias_correction2 = 1.0 - beta2 ** state["step"]
+                        step_size = (
+                            step_size * math.sqrt(bias_correction2) / bias_correction1
+                        )
 
-                    bias_correction2_sqrt = _dispatch_sqrt(bias_correction2)
-                    denom = (exp_avg_sq.sqrt() / bias_correction2_sqrt).add_(
-                        group["eps"]
-                    )
-                    if group["weight_decay"] != 0:
-                        p.mul_(1 - group["weight_decay"] * group["lr"])
+                    p.addcdiv_(exp_avg, denom, value=-step_size)
 
-                    p.addcdiv_(exp_avg / bias_correction1, denom, value=-step_size)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        """Perform a single optimization step.
-
-        Args:
-            closure (Callable, optional): A closure that reevaluates the model
-                and returns the loss.
-        """
-        self._cuda_graph_capture_health_check()
-
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        self.step_efficient()
+                    # Just adding the square of the weights to the loss function is *not*
+                    # the correct way of using L2 regularization/weight decay with Adam,
+                    # since that will interact with the m and v parameters in strange ways.
+                    #
+                    # Instead we want to decay the weights in a manner that doesn't interact
+                    # with the m/v parameters. This is equivalent to adding the square
+                    # of the weights to the loss with plain (non-momentum) SGD.
+                    # Add weight decay at the end (fixed version)
+                    if group["weight_decay"] > 0.0:
+                        p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
 
         return loss
