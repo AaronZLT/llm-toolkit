@@ -53,7 +53,7 @@ class ModelArguments:
     )
     init_lora_weights: str = field(
         default=None,
-        metadata={"help": "The method to init LoRA_A. Choose from [pissa, olora]."},
+        metadata={"help": "The method to init lora_A and lora_B. Choose from [gaussian, pissa, olora]."},
     )
     lora_modules: Optional[str] = field(
         default="all",

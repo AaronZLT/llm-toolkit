@@ -31,6 +31,9 @@ from .model import (
     get_accelerate_model,
     print_trainable_parameters,
 )
+from .sparse import (
+    prune_magnitude,
+)
 from .load_and_save import (
     flexible_load,
     merge_and_save,
