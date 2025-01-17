@@ -120,7 +120,7 @@ if __name__ == "__main__":
     )
 
     # sparse eval 16-bit and 4-bit
-    # it is suggest to keep the sparsity_ratio the same as the checkpoint
+    # it is suggest to keep the sparsity_ratio as the same as the checkpoint
     eval(
         base_model_name_or_path="meta-llama/Llama-2-7b-hf",
         peft_model_name_or_path="llama2-7b.metamath40k.sparse0.5.lora.output/checkpoint-1000",

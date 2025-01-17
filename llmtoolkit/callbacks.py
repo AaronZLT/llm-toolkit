@@ -222,6 +222,14 @@ Suppose the training will run n steps.
 2. During the sparse, sparsity_ratio is iterately achieved, by sparse_warmup_steps.
 """
 
+r"""
+----------------------------
+
+|---25%---|--50%--|----------------|
+
+W+AB
+text llm sparse+Quant SAT+QAT
+"""
 
 class DynamicSparseCallback(transformers.TrainerCallback):
     def __init__(
