@@ -6,6 +6,9 @@ import torch
 import transformers
 from accelerate import Accelerator
 
+from .sparse import (
+    prune_magnitude,
+)
 from .utils import (
     get_world_size,
     print_rank_0,
@@ -210,3 +213,58 @@ class StepInfoCallback(transformers.TrainerCallback):
 
         gsi.info.update(profile_dict)
         gsi.dump(self.output_dir)
+
+
+r"""
+A sparse schedule is defined by sparsity_ratio, sparse_warmup, sparse_warmup_steps
+Suppose the training will run n steps.
+1. Sparse will only happen in the first sparse_warmup * n steps.
+2. During the sparse, sparsity_ratio is iterately achieved, by sparse_warmup_steps.
+"""
+
+
+class DynamicSparseCallback(transformers.TrainerCallback):
+    def __init__(
+        self,
+        model,
+        sparsity_ratio: float = 0.5,
+        sparse_warmup_ratio: float = 0.5,
+        sparse_warmup_steps: int = 2,
+    ):
+        self.model = model
+        self.sparsity_ratio = sparsity_ratio
+        self.sparse_warmup_ratio = sparse_warmup_ratio
+        self.sparse_warmup_steps = sparse_warmup_steps
+        self.sparse_schedule = {}
+
+    def create_sparse_schedule(self, max_steps: int):
+        max_sparse_warmup = max_steps * self.sparse_warmup_ratio
+        sparse_step_unit = max_sparse_warmup / self.sparse_warmup_steps
+        sparsity_ratio_unit = self.sparsity_ratio / self.sparse_warmup_steps
+        for i in range(self.sparse_warmup_steps):
+            self.sparse_schedule.update(
+                {int(sparse_step_unit * (i + 1)): sparsity_ratio_unit * (i + 1)}
+            )
+        print_rank_0(f"sparse schedule created as : {self.sparse_schedule}")
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        max_steps = state.max_steps
+        self.create_sparse_schedule(max_steps)
+
+    def on_step_begin(self, args, state, control, **kwargs):
+        step = state.global_step
+        if step in self.sparse_schedule:
+            prune_magnitude(model=self.model, sparsity_ratio=self.sparse_schedule[step])
+
+
+class StaticSparseCallback(transformers.TrainerCallback):
+    def __init__(
+        self,
+        model,
+        sparsity_ratio: float = 0.5,
+    ):
+        self.model = model
+        self.sparsity_ratio = sparsity_ratio
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        prune_magnitude(model=self.model, sparsity_ratio=self.sparsity_ratio)

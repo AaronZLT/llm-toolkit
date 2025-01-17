@@ -212,12 +212,6 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     print_rank_0(f"Loading base model from {model_args.model_name_or_path}.")
     model = AutoModelForCausalLM.from_pretrained(**pretrained_model_kwargs)
 
-    if model_args.sparse:
-        if model_args.structured_sparse:
-            prune_magnitude(model, prune_n=2, prune_m=4)
-        else:
-            prune_magnitude(model, sparsity_ratio=model_args.sparsity_ratio)
-
     if compute_dtype == torch.float16 and model_args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print_rank_0("=" * 80)

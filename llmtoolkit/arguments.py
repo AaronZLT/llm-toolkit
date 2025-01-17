@@ -6,6 +6,7 @@ import transformers
 
 from .utils import (
     print_rank_0,
+    safe_dict2file,
 )
 
 
@@ -93,22 +94,6 @@ class ModelArguments:
         default=16,
         metadata={
             "help": "How many bits to use. In general we use --bf16 training, here the bits is 16."
-        },
-    )
-    sparse: bool = field(
-        default=False,
-        metadata={"help": "Do sparse on the base model. Default is False."},
-    )
-    structured_sparse: bool = field(
-        default=False,
-        metadata={
-            "help": "Do structured sparse on the base model. Default is False. Enable this will ingore the unstructured sparsity ratio, a default 2:4 sparse will be used. Need --sparse True."
-        },
-    )
-    sparsity_ratio: float = field(
-        default=1.0,
-        metadata={
-            "help": "Sparse raito of base model. For example, 0.5 indicates half of the parameters in a linear is 0."
         },
     )
 
@@ -298,6 +283,32 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
             "help": "Training parallelism, choose from dp|pp, default is dp. This is supported by transformers and accelerate."
         },
     )
+    sparse: bool = field(
+        default=False,
+        metadata={"help": "Do sparse on the base model. Default is False."},
+    )
+    sparse_type: str = field(
+        default="dynamic_sparse",
+        metadata={
+            "help": "Sparse mode to use. Should be one of [`dynamic_sparse`, `dynamic_nm_sparse`, 'static_sparse', 'static_nm_sparse']."
+        },
+    )
+    sparsity_ratio: float = field(
+        default=0.5,
+        metadata={
+            "help": "Sparse raito of base model. For example, 0.5 indicates half of the parameters in a linear is 0."
+        },
+    )
+    sparse_warmup_ratio: float = field(
+        default=0.5,
+        metadata={
+            "help": "The ratio of the steps sparse warmup takes / max steps. For example, 0.5 of sparse_warmup_ratio means sparse will only happen in the first 0.5*max_steps steps."
+        },
+    )
+    sparse_warmup_steps: int = field(
+        default=2,
+        metadata={"help": "How many round will the sparse warmup goes."},
+    )
     debug_mode: bool = field(default=False, metadata={"help": "Turn on debug mode."})
 
 
@@ -394,12 +405,23 @@ def get_unique_key(
         "quant": "quant" if args.quant else None,
         "compute_type": "fp16" if args.fp16 else "bf16" if args.bf16 else "fp32",
         "deepspeed": args.deepspeed,
-        "sparse": f"sparse{args.sparsity_ratio}"
-        if args.sparse and not args.structured_sparse
-        else "sparse2:4"
-        if args.sparse and args.structured_sparse
-        else None,
+        "sparse": f"{args.sparse_type}{args.sparsity_ratio}" if args.sparse else None,
     }
     key = ".".join(value for value in config_dict.values() if value is not None)
 
     return key
+
+
+def save_args(model_args=None, data_args=None, training_args=None, save_dir: str = "."):
+    if model_args is None and data_args is None and training_args is None:
+        print_rank_0("No args to save!")
+        return
+
+    sorted_vars = sorted(
+        vars(
+            argparse.Namespace(
+                **vars(model_args), **vars(data_args), **vars(training_args)
+            )
+        ).items()
+    )
+    safe_dict2file(sorted_vars, "args.json")

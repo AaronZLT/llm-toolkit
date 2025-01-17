@@ -19,6 +19,8 @@ from .callbacks import (
     EmptycacheCallback,
     PT_ProfCallback,
     StepInfoCallback,
+    DynamicSparseCallback,
+    StaticSparseCallback,
 )
 from .dataset import (
     build_data_module,
@@ -86,6 +88,19 @@ def train(
     # Callbacks
     if training_args.clean_cache:
         trainer.add_callback(EmptycacheCallback)
+
+    if training_args.sparse:
+        if training_args.sparse_type == "dynamic_sparse":
+            trainer.add_callback(
+                DynamicSparseCallback(
+                    model=model,
+                    sparsity_ratio=training_args.sparsity_ratio,
+                    sparse_warmup_ratio=training_args.sparse_warmup_ratio,
+                    sparse_warmup_steps=training_args.sparse_warmup_steps,
+                )
+            )
+        elif training_args.sparse_type == "static_sparse":
+            trainer.add_callback(StaticSparseCallback(model=model))
 
     trainer.add_callback(
         StepInfoCallback(
