@@ -1,3 +1,4 @@
+import os
 import argparse
 from typing import Optional, Tuple
 from dataclasses import dataclass, field
@@ -54,7 +55,9 @@ class ModelArguments:
     )
     init_lora_weights: str = field(
         default=None,
-        metadata={"help": "The method to init lora_A and lora_B. Choose from [gaussian, pissa, olora]."},
+        metadata={
+            "help": "The method to init lora_A and lora_B. Choose from [gaussian, pissa, olora]."
+        },
     )
     lora_modules: Optional[str] = field(
         default="all",
@@ -311,7 +314,9 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     unify_save: bool = field(
         default=False,
-        metadata={"help": "Save the whole model or just the adapters. Works only when the isinstance(model, PeftModel) is True."},
+        metadata={
+            "help": "Save the whole model or just the adapters. Works only when the isinstance(model, PeftModel) is True."
+        },
     )
     debug_mode: bool = field(default=False, metadata={"help": "Turn on debug mode."})
 
@@ -428,4 +433,4 @@ def save_args(model_args=None, data_args=None, training_args=None, save_dir: str
             )
         ).items()
     )
-    safe_dict2file(sorted_vars, "args.json")
+    safe_dict2file(sorted_vars, os.path.join(save_dir, "args.json"))
