@@ -309,6 +309,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=2,
         metadata={"help": "How many round will the sparse warmup goes."},
     )
+    unify_save: bool = field(
+        default=False,
+        metadata={"help": "Save the whole model or just the adapters. Works only when the isinstance(model, PeftModel) is True."},
+    )
     debug_mode: bool = field(default=False, metadata={"help": "Turn on debug mode."})
 
 

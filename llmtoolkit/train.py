@@ -132,13 +132,22 @@ def train(
         train_result = trainer.train()
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)
-        if (
-            training_args.save_strategy is transformers.IntervalStrategy.STEPS
-            or training_args.save_strategy is transformers.IntervalStrategy.EPOCH
-        ):
+        save_strategy = (
+            training_args.save_strategy
+            if isinstance(training_args.save_strategy, str)
+            else training_args.save_strategy.value
+        )
+        if save_strategy == "steps" or save_strategy == "epoch":
             trainer.save_metrics("train", metrics)
             trainer.save_state()
-            trainer.save_model()
+            if training_args.unify_save and isinstance(trainer.model, PeftModel):
+                print_rank_0(
+                    f"merged model will be save at {os.path.join(training_args.output_dir, 'merged')}"
+                )
+                trainer.model = trainer.model.merge_and_unload()
+                trainer.save_model(os.path.join(training_args.output_dir, 'merged'))
+            else:
+                trainer.save_model()
         all_metrics.update(metrics)
     if training_args.do_eval:
         print_rank_0("*** Evaluate ***")
