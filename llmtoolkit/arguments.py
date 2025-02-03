@@ -32,7 +32,7 @@ class ModelArguments:
     peft: Optional[str] = field(
         default=None,
         metadata={
-            "help": "To use peft, choose from [lora|lorafa|vera|dora|prompt|embedding]"
+            "help": "To use peft, choose from [lora|lorafa|vera|dora|adalora|loraga|prompt|embedding]"
         },
     )
     lora_rank: int = field(
@@ -186,7 +186,12 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
             "help": "The optimizer to be used. Choose adamw_lorafa to use AdamW_lorafa. For now please use --adamw_lorafa True."
         },
     )
-    adamw_lorafa: bool = field(default=False, metadata={"help": "Use AdamW_lorafa."})
+    adamw: str = field(
+        default=None,
+        metadata={
+            "help": "The optimizer to be used. Choose from [lorafa, lorapro], or keep it None."
+        },
+    )
     per_device_train_batch_size: int = field(
         default=1,
         metadata={

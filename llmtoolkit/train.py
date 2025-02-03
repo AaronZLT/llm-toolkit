@@ -32,7 +32,7 @@ from .model import (
 )
 from .trainer import (
     BaseSeq2SeqTrainer,
-    Seq2SeqTrainer_lorafa,
+    Seq2SeqTrainer_optim,
 )
 from .utils import (
     print_rank_0,
@@ -59,10 +59,11 @@ def train(
         model, training_args.debug_mode
     )
 
-    if training_args.adamw_lorafa and isinstance(model, PeftModel):
-        trainer = Seq2SeqTrainer_lorafa(
+    if training_args.adamw and isinstance(model, PeftModel):
+        trainer = Seq2SeqTrainer_optim(
             lora_scale=model.peft_config["default"].lora_alpha
             / model.peft_config["default"].r,
+            adamw = training_args.adamw,
             model=model,
             tokenizer=tokenizer,
             args=training_args,

@@ -14,6 +14,7 @@ import bitsandbytes as bnb
 from peft import (
     prepare_model_for_kbit_training,
     LoraConfig,
+    AdaLoraConfig,
     VeraConfig,
     PrefixTuningConfig,
     PromptTuningConfig,
@@ -136,6 +137,19 @@ def peft_model(model, args: ModelArguments):
                 task_type="CAUSAL_LM",
             )
             _peft_model = get_peft_model(model, config)
+        elif args.peft == "adalora":
+            config = AdaLoraConfig(
+                r=args.lora_rank,
+                lora_alpha=int(args.lora_scale * args.lora_rank),
+                target_modules=modules,
+                lora_dropout=args.lora_dropout,
+                bias="none",
+                task_type="CAUSAL_LM",
+            )
+            _peft_model = get_peft_model(model, config)
+        elif args.peft == "loraga":
+            # please preprocess the model, no operations here
+            pass
         elif args.peft == "vera":
             config = VeraConfig(r=args.lora_rank, target_modules=modules)
             _peft_model = get_peft_model(model, config)
