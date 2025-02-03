@@ -310,6 +310,19 @@ def preprocess_codefeedback(dataset: datasets.Dataset) -> datasets.Dataset:
 
     return dataset.map(_preprocess_doc)
 
+def preprocess_tulu_v3(dataset: datasets.Dataset) -> datasets.Dataset:
+    new_dataset = []
+
+    def _process_doc(example):
+        if len(example['messages']) == 2:
+            user_content = next(item['content'] for item in example['messages'] if item['role'] == 'user')
+            assistant_content = next(item['content'] for item in example['messages'] if item['role'] == 'assistant')
+            new_dataset.append({"input":SFTPrompt.instruction.format(instruction=user_content), "output":assistant_content})
+
+    dataset = dataset.map(_process_doc)
+    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
+    return new_dataset
+
 """
 Make dataset and collator for supervised fine-tuning.
 Datasets are expected to have the following columns: { `input`, `output` }
@@ -337,6 +350,7 @@ DATASETS_ARGS = {
     "metamath40k": ("meta-math/MetaMathQA-40K", {}),
     "wizardlm70k": ("WizardLMTeam/WizardLM_evol_instruct_70k", {}),
     "codefeedback": ("m-a-p/CodeFeedback-Filtered-Instruction", {}),
+    "tuluv3": ("allenai/tulu-3-sft-mixture", {}),
 }
 
 FORMAT_FUNCTIONS = {
@@ -359,6 +373,7 @@ FORMAT_FUNCTIONS = {
     "metamath40k": preprocess_metamath,
     "wizardlm70k": preprocess_wizardlm,
     "codefeedback": preprocess_codefeedback,
+    "tuluv3": preprocess_tulu_v3,
 }
 
 
