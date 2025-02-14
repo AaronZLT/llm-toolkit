@@ -10,6 +10,7 @@ from .sparse import (
     prune_magnitude,
 )
 from .utils import (
+    safe_dict2file,
     get_world_size,
     print_rank_0,
     rank_0,
@@ -216,42 +217,67 @@ class StepInfoCallback(transformers.TrainerCallback):
 
 
 r"""
+Sparse Aware Training
+
 A sparse schedule is defined by sparsity_ratio, sparse_warmup, sparse_warmup_steps
 Suppose the training will run n steps.
-1. Sparse will only happen in the first sparse_warmup * n steps.
-2. During the sparse, sparsity_ratio is iterately achieved, by sparse_warmup_steps.
-"""
-
-r"""
-----------------------------
+1. Sparse will only happen before the first sparse_warmup * n steps.
+2. During the sparse, sparsity_ratio is iterately achieved, by number of sparse_warmup_steps.
 
 |---25%---|--50%--|----------------|
-
-W+AB
-text llm sparse+Quant SAT+QAT
 """
 
-class DynamicSparseCallback(transformers.TrainerCallback):
+
+class SparseCallbackBase(transformers.TrainerCallback):
+    def __init__(self, model, sparsity_ratio: float, output_dir: str = ""):
+        self.model = model
+        self.sparsity_ratio = sparsity_ratio
+        self.named_mask = {}
+        self.sparse_config = {}
+        self.output_dir = output_dir
+        self.train_end = False
+
+    def on_save(self, args, state, control, **kwargs):
+        if not self.train_end:
+            checkpoint_dir = os.path.join(
+                self.output_dir, f"checkpoint-{state.global_step}"
+            )
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            torch.save(self.named_mask, os.path.join(checkpoint_dir, "named_mask.pth"))
+            print_rank_0(
+                f"named_mask.pth has been saved at {checkpoint_dir}/named_mask.pth"
+            )
+            safe_dict2file(
+                self.sparse_config, os.path.join(checkpoint_dir, "sparse_config.json")
+            )
+
+    def on_train_end(self, args, state, control, **kwargs):
+        print_rank_0("Training end")
+        self.train_end = True
+
+
+class DynamicSparseCallback(SparseCallbackBase):
     def __init__(
         self,
         model,
         sparsity_ratio: float = 0.5,
         sparse_warmup_ratio: float = 0.5,
         sparse_warmup_steps: int = 2,
+        output_dir: str = "",
     ):
-        self.model = model
-        self.sparsity_ratio = sparsity_ratio
+        super().__init__(model, sparsity_ratio, output_dir)
         self.sparse_warmup_ratio = sparse_warmup_ratio
         self.sparse_warmup_steps = sparse_warmup_steps
         self.sparse_schedule = {}
+        self.sparse_config.update({"sparse_type": "dynamic_sparse"})
 
     def create_sparse_schedule(self, max_steps: int):
         max_sparse_warmup = max_steps * self.sparse_warmup_ratio
         sparse_step_unit = max_sparse_warmup / self.sparse_warmup_steps
         sparsity_ratio_unit = self.sparsity_ratio / self.sparse_warmup_steps
         for i in range(self.sparse_warmup_steps):
-            self.sparse_schedule.update(
-                {int(sparse_step_unit * (i + 1)): sparsity_ratio_unit * (i + 1)}
+            self.sparse_schedule[int(sparse_step_unit * (i + 1))] = (
+                sparsity_ratio_unit * (i + 1)
             )
         print_rank_0(f"sparse schedule created as : {self.sparse_schedule}")
 
@@ -262,17 +288,24 @@ class DynamicSparseCallback(transformers.TrainerCallback):
     def on_step_begin(self, args, state, control, **kwargs):
         step = state.global_step
         if step in self.sparse_schedule:
-            prune_magnitude(model=self.model, sparsity_ratio=self.sparse_schedule[step])
+            self.named_mask = prune_magnitude(
+                model=self.model, sparsity_ratio=self.sparse_schedule[step]
+            )
+            self.sparse_config.update({"sparse_schedule": self.sparse_schedule})
+            self.sparse_config.update(
+                {"current_sparsity_ratio": self.sparse_schedule[step]}
+            )
+            self.sparse_config.update({"sparse_module": list(self.named_mask.keys())})
 
 
-class StaticSparseCallback(transformers.TrainerCallback):
-    def __init__(
-        self,
-        model,
-        sparsity_ratio: float = 0.5,
-    ):
-        self.model = model
-        self.sparsity_ratio = sparsity_ratio
+class StaticSparseCallback(SparseCallbackBase):
+    def __init__(self, model, sparsity_ratio: float = 0.5, output_dir: str = ""):
+        super().__init__(model, sparsity_ratio, output_dir)
+        self.sparse_config.update({"sparse_type": "static_sparse"})
 
     def on_train_begin(self, args, state, control, **kwargs):
-        prune_magnitude(model=self.model, sparsity_ratio=self.sparsity_ratio)
+        self.named_mask = prune_magnitude(
+            model=self.model, sparsity_ratio=self.sparsity_ratio
+        )
+        self.sparse_config.update({"current_sparsity_ratio": self.sparsity_ratio})
+        self.sparse_config.update({"sparse_module": list(self.named_mask.keys())})

@@ -63,7 +63,7 @@ def train(
         trainer = Seq2SeqTrainer_optim(
             lora_scale=model.peft_config["default"].lora_alpha
             / model.peft_config["default"].r,
-            adamw = training_args.adamw,
+            adamw=training_args.adamw,
             model=model,
             tokenizer=tokenizer,
             args=training_args,
@@ -98,10 +98,16 @@ def train(
                     sparsity_ratio=training_args.sparsity_ratio,
                     sparse_warmup_ratio=training_args.sparse_warmup_ratio,
                     sparse_warmup_steps=training_args.sparse_warmup_steps,
+                    output_dir=training_args.output_dir,
                 )
             )
         elif training_args.sparse_type == "static_sparse":
-            trainer.add_callback(StaticSparseCallback(model=model))
+            trainer.add_callback(
+                StaticSparseCallback(
+                    model=model,
+                    output_dir=training_args.output_dir,
+                )
+            )
 
     trainer.add_callback(
         StepInfoCallback(
@@ -146,9 +152,13 @@ def train(
                     f"merged model will be save at {os.path.join(training_args.output_dir, 'merged')}"
                 )
                 trainer.model = trainer.model.merge_and_unload()
-                trainer.save_model(os.path.join(training_args.output_dir, 'merged'))
+                trainer.save_model(os.path.join(training_args.output_dir, "merged"))
             else:
-                trainer.save_model()
+                trainer.save_model(os.path.join(training_args.output_dir, "save"))
+        else:
+            print_rank_0(
+                "Since save_strategy is neither steps or epoch, there will be no model or checkpoint to save. This is an expected behavior when benchmarking the system efficiency of LLMs, this is an unexpected behavior when fine-tuning LLMs."
+            )
         all_metrics.update(metrics)
     if training_args.do_eval:
         print_rank_0("*** Evaluate ***")
@@ -162,6 +172,8 @@ def train(
             fout.write(json.dumps(all_metrics))
 
 
+# train_cli is deprecate
+# to implement a cli train function, you may warp the 'train' function above
 def train_cli(
     model_args: ModelArguments,
     data_args: DataArguments,

@@ -292,6 +292,7 @@ def preprocess_metamath(dataset: datasets.Dataset) -> datasets.Dataset:
 
     return dataset.map(_preprocess_doc)
 
+
 def preprocess_wizardlm(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
         return {
@@ -300,6 +301,7 @@ def preprocess_wizardlm(dataset: datasets.Dataset) -> datasets.Dataset:
         }
 
     return dataset.map(_preprocess_doc)
+
 
 def preprocess_codefeedback(dataset: datasets.Dataset) -> datasets.Dataset:
     def _preprocess_doc(example):
@@ -310,32 +312,48 @@ def preprocess_codefeedback(dataset: datasets.Dataset) -> datasets.Dataset:
 
     return dataset.map(_preprocess_doc)
 
+
 def preprocess_tulu_v3(dataset: datasets.Dataset) -> datasets.Dataset:
     new_dataset = []
 
     def _process_doc(example):
-        if len(example['messages']) == 2:
-            user_content = next(item['content'] for item in example['messages'] if item['role'] == 'user')
-            assistant_content = next(item['content'] for item in example['messages'] if item['role'] == 'assistant')
-            new_dataset.append({"input":SFTPrompt.instruction.format(instruction=user_content), "output":assistant_content})
+        if len(example["messages"]) == 2:
+            user_content = next(
+                item["content"]
+                for item in example["messages"]
+                if item["role"] == "user"
+            )
+            assistant_content = next(
+                item["content"]
+                for item in example["messages"]
+                if item["role"] == "assistant"
+            )
+            new_dataset.append(
+                {
+                    "input": SFTPrompt.instruction.format(instruction=user_content),
+                    "output": assistant_content,
+                }
+            )
 
     dataset = dataset.map(_process_doc)
     new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
     return new_dataset
 
+
 def preprocess_mmlu(dataset: datasets.Dataset) -> datasets.Dataset:
     new_dataset = []
     labels = ["A", "B", "C", "D"]
+
     def _preprocess_doc(example):
         slice = example["train"]
         input = f"Question: {slice['question']}\n"
-        
+
         for label, choice in zip(labels, slice["choices"]):
             input = input + f"{label}. {choice}\n"
-        input = input+"Answer: "
+        input = input + "Answer: "
         output = f"{labels[slice['answer']]}. {slice['choices'][slice['answer']]}"
 
-        new_dataset.append({"input":input, "output":output})
+        new_dataset.append({"input": input, "output": output})
 
     dataset.map(_preprocess_doc)
     new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.1)
@@ -492,13 +510,15 @@ def build_data_module(
         lambda x: {"length": len(x["input"]) + len(x["output"])}
     )
     longest_sequence = max(train_dataset, key=lambda x: x["length"])
-    longest_sequence_length = len(tokenizer(longest_sequence["input"])["input_ids"]) + len(tokenizer(longest_sequence["output"])["input_ids"])
+    longest_sequence_length = len(
+        tokenizer(longest_sequence["input"])["input_ids"]
+    ) + len(tokenizer(longest_sequence["output"])["input_ids"])
     if (
         longest_sequence_length >= args.source_max_len + args.target_max_len
         and not args.hard_padding
     ):
         print_rank_0(
-            f"WARNING: You choose not to pad all sequences to the max same length (max_input_token = source_max_len + target_max_len = {args.source_max_len+args.target_max_len}) since hard_padding is False. However, at least 1 sequence in the dataset has exceeded the max length ({longest_sequence_length}), which may ultimately cause OOM during the training. To avoid OOM, try few steps with --hard_padding True before training."
+            f"WARNING: You choose not to pad all sequences to the max same length (max_input_token = source_max_len + target_max_len = {args.source_max_len + args.target_max_len}) since hard_padding is False. However, at least 1 sequence in the dataset has exceeded the max length ({longest_sequence_length}), which may ultimately cause OOM during the training. To avoid OOM, try few steps with --hard_padding True before training."
         )
 
     for index in random.sample(range(len(train_dataset)), 3):
