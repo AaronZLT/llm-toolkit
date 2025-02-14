@@ -89,14 +89,15 @@ def print_rank_0(message):
 
 
 @rank_0
-def safe_dict2file(dictionary: dict, filename: str):
+def safe_dict2file(dictionary: dict, filename: str, overwrite: bool = False):
     lock = threading.Lock()
     with lock:
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        with open(filename, "a") as json_file:
-            json.dump(dictionary, json_file, indent=4)
+        mode = "w" if overwrite else "a"
+        with open(filename, mode, encoding="utf-8") as json_file:
+            json.dump(dictionary, json_file, indent=4, ensure_ascii=False)
             json_file.write("\n")
 
 

@@ -238,22 +238,19 @@ class SparseCallbackBase(transformers.TrainerCallback):
         self.train_end = False
 
     def on_save(self, args, state, control, **kwargs):
-        if not self.train_end:
-            checkpoint_dir = os.path.join(
-                self.output_dir, f"checkpoint-{state.global_step}"
-            )
-            os.makedirs(checkpoint_dir, exist_ok=True)
-            torch.save(self.named_mask, os.path.join(checkpoint_dir, "named_mask.pth"))
-            print_rank_0(
-                f"named_mask.pth has been saved at {checkpoint_dir}/named_mask.pth"
-            )
-            safe_dict2file(
-                self.sparse_config, os.path.join(checkpoint_dir, "sparse_config.json")
-            )
-
-    def on_train_end(self, args, state, control, **kwargs):
-        print_rank_0("Training end")
-        self.train_end = True
+        checkpoint_dir = os.path.join(
+            self.output_dir, f"checkpoint-{state.global_step}"
+        )
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        torch.save(self.named_mask, os.path.join(checkpoint_dir, "named_mask.pth"))
+        print_rank_0(
+            f"named_mask.pth has been saved at {checkpoint_dir}/named_mask.pth"
+        )
+        safe_dict2file(
+            self.sparse_config,
+            os.path.join(checkpoint_dir, "sparse_config.json"),
+            overwrite=True,
+        )
 
 
 class DynamicSparseCallback(SparseCallbackBase):

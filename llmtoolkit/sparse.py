@@ -100,11 +100,13 @@ def apply_spare(model, named_mask: dict):
     for n, m in model.named_modules():
         if n in named_mask:
             print_rank_0(f"Applying sparse on layer - {n}")
-            m.weight.data[named_mask[n]] = 0
+            m.weight.data[named_mask[n].cuda()] = 0
 
 
 @torch.no_grad()
-def prune_magnitude(model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0) -> List:
+def prune_magnitude(
+    model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0, offload=True
+) -> List:
     def _get_mask_prune_magnitude(
         W,
         sparsity_ratio: float,
@@ -112,10 +114,10 @@ def prune_magnitude(model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0) ->
         prune_m: int,
     ) -> torch.tensor:
         # W = module.weight.data
-        W_cpu = W.detach().cpu().clone()
-        W_metric = torch.abs(W_cpu)
+        # W_cpu = W.detach().cpu().clone()
+        W_metric = torch.abs(W)
         if prune_n != 0:
-            W_mask = torch.zeros_like(W_cpu) == 1
+            W_mask = torch.zeros_like(W) == 1
             for ii in range(W_metric.shape[1]):
                 if ii % prune_m == 0:
                     tmp = W_metric[:, ii : (ii + prune_m)].float()
@@ -125,11 +127,15 @@ def prune_magnitude(model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0) ->
                         True,
                     )
         else:
-            thresh = torch.sort(W_metric.flatten().cuda())[0][
-                int(W_cpu.numel() * sparsity_ratio)
+            thresh = torch.sort(W_metric.flatten())[0][
+                int(W.numel() * sparsity_ratio)
             ].cpu()
             W_mask = W_metric <= thresh
-        return W_mask
+
+        if offload:
+            return W_mask.cpu()
+        else:
+            return W_mask
 
     if sparsity_ratio > 1 or sparsity_ratio < 0:
         raise ValueError("sparsity_ratio should be in (0,1).")
@@ -172,7 +178,7 @@ def prune_magnitude(model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0) ->
                             )
                         }
                     )
-                    dequantize_base_layer_data[named_mask[base_layer_name]] = 0
+                    dequantize_base_layer_data[named_mask[base_layer_name].cuda()] = 0
                     m.base_layer.weight.data, _ = quantize_4bit(
                         A=dequantize_base_layer_data,
                         absmax=quant_state.absmax,
@@ -207,7 +213,7 @@ def prune_magnitude(model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0) ->
                     print_rank_0(
                         f"Pruning layer - {n}, sparsity ratio = {sparsity_ratio}"
                     )
-                    m.weight.data[named_mask[n]]
+                    m.weight.data[named_mask[n].cuda()] = 0
         else:
             for n, m in model.named_modules():
                 if isinstance(m, nn.Linear):
@@ -221,6 +227,6 @@ def prune_magnitude(model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0) ->
                     print_rank_0(
                         f"Pruning layer - {n}, sparsity ratio = {sparsity_ratio}"
                     )
-                    m.weight.data[named_mask[n]]
+                    m.weight.data[named_mask[n].cuda()] = 0
 
     return named_mask
