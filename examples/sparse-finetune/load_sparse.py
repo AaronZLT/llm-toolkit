@@ -19,9 +19,9 @@ from llmtoolkit import (
 
 model, tokenizer = load(
     "/mnt/sdb/zhanglongteng/sdd/zhanglongteng/Llama-2-7b-hf",
-    peft_model_name_or_path="/mnt/sdb/zhanglongteng/workspace/llm-toolkit/examples/sparse-finetune/validate.dynamic_sparse.sparse_warmup_steps1/checkpoint-100",
+    peft_model_name_or_path="/mnt/sdb/zhanglongteng/workspace/llm-toolkit/examples/sparse-finetune/finetune.llama2_7b.metamath40k.4bit.dynamic_sparse.sparse_warmup_steps1/checkpoint-100",
     load_in_4bit=True,
-    sparse_named_mask_path="/mnt/sdb/zhanglongteng/workspace/llm-toolkit/examples/sparse-finetune/validate.dynamic_sparse.sparse_warmup_steps1/checkpoint-100/named_mask.pth",
+    sparse_named_mask_path="/mnt/sdb/zhanglongteng/workspace/llm-toolkit/examples/sparse-finetune/finetune.llama2_7b.metamath40k.4bit.dynamic_sparse.sparse_warmup_steps1/checkpoint-100/named_mask.pth",
 )
 
 print(model)
