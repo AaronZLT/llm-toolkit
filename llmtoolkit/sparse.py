@@ -15,40 +15,6 @@ from .utils import (
 )
 
 
-@dataclass
-class SparseConfig:
-    """
-    todo
-    """
-
-    sparse: bool = field(
-        default=False,
-        metadata={"help": "Do sparse on the base model. Default is False."},
-    )
-    sparse_type: str = field(
-        default="dynamic_sparse",
-        metadata={
-            "help": "Sparse mode to use. Should be one of [`dynamic_sparse`, `dynamic_nm_sparse`, 'static_sparse', 'static_nm_sparse']."
-        },
-    )
-    sparsity_ratio: float = field(
-        default=0.5,
-        metadata={
-            "help": "Sparse raito of base model. For example, 0.5 indicates half of the parameters in a linear is 0."
-        },
-    )
-    sparse_warmup_ratio: float = field(
-        default=0.5,
-        metadata={
-            "help": "The ratio of the steps sparse warmup takes / max steps. For example, 0.5 of sparse_warmup_ratio means sparse will only happen in the first 0.5*max_steps steps."
-        },
-    )
-    sparse_warmup_steps: int = field(
-        default=2,
-        metadata={"help": "How many round will the sparse warmup goes."},
-    )
-
-
 r"""
 FYI
 
@@ -94,13 +60,31 @@ def find_module_name(model, target_module):
             return name
     return None
 
-
+# todo: modify uint8 directly without dequantize and quantize
 @torch.no_grad()
 def apply_spare(model, named_mask: dict):
     for n, m in model.named_modules():
         if n in named_mask:
             print_rank_0(f"Applying sparse on layer - {n}")
-            m.weight.data[named_mask[n].cuda()] = 0
+            if isinstance(m, bnb.nn.Linear4bit):
+                quant_state = copy.deepcopy(m.quant_state)
+                _dequantize = dequantize_4bit(
+                    A=m.weight.data,
+                    quant_state=quant_state,
+                    blocksize=quant_state.blocksize,
+                    quant_type=quant_state.quant_type,
+                )
+                _dequantize[named_mask[n].cuda()] = 0
+                m.weight.data, _ = quantize_4bit(
+                    A=_dequantize,
+                    absmax=quant_state.absmax,
+                    blocksize=quant_state.blocksize,
+                    quant_type=quant_state.quant_type,
+                )
+            elif isinstance(m, bnb.nn.Linear8bit):
+                pass
+            else:
+                m.weight.data[named_mask[n].cuda()] = 0
 
 
 @torch.no_grad()

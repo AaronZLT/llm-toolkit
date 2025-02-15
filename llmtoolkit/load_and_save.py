@@ -12,12 +12,44 @@ from peft import (
     PeftModel,
 )
 
+from .sparse import (
+    apply_spare,
+)
 from .utils import (
     print_rank_0,
     is_ipex_available,
     rank_0,
     create_timestamp,
 )
+
+
+def load(
+    base_model_name_or_path: str,
+    peft_model_name_or_path: str = None,
+    load_in_4bit: bool = False,
+    sparse_named_mask_path: str = None,
+):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_name_or_path, load_in_4bit=load_in_4bit
+    ).to(device)
+    target_tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
+
+    if peft_model_name_or_path:
+        peft_tokenizer = AutoTokenizer.from_pretrained(peft_model_name_or_path)
+        if len(target_tokenizer) != len(peft_tokenizer):
+            print_rank_0(
+                f"Since the embedding of base model mismatch peft adapter ({len(target_tokenizer)} - {len(peft_tokenizer)}), resizing."
+            )
+            model.resize_token_embeddings(len(peft_tokenizer))
+        target_tokenizer = peft_tokenizer
+        model = PeftModel.from_pretrained(model, peft_model_name_or_path)
+
+    if sparse_named_mask_path:
+        named_mask = torch.load(sparse_named_mask_path)
+        apply_spare(model, named_mask)
+
+    return model, target_tokenizer
 
 
 def flexible_load(args):

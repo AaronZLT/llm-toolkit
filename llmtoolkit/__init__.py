@@ -34,8 +34,10 @@ from .model import (
 )
 from .sparse import (
     prune_magnitude,
+    apply_spare,
 )
 from .load_and_save import (
+    load,
     flexible_load,
     merge_and_save,
 )
