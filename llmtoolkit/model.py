@@ -254,7 +254,7 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     tokenizer.padding_side = "left"
 
     # add special tokens
-    # 1. add pad_token if pad_token is None, as "<|reserved_special_token_100|>", not as any in-use tokens
+    # 1. add pad_token if pad_token is None, as "<|reserved_special_token_100|>", not as any in-use tokens. The reason to use "<|reserved_special_token_100|>" rather than "<|pad|>" is that we do not want to introduce extra tokens when finetune LLama3 models
     # 2. add unk_token if unk_token is None (even though for most models they do have unk_token), as "<|reserved_special_token_101|>"
     # 3. final check pad_token, eos_token, bos_token, unk_token
     # 4. the best case is when the tokenizer and model support these reserved tokens, since then we do not need to resize the embedding

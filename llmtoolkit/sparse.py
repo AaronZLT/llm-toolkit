@@ -60,6 +60,7 @@ def find_module_name(model, target_module):
             return name
     return None
 
+
 # todo: modify uint8 directly without dequantize and quantize
 @torch.no_grad()
 def apply_spare(model, named_mask: dict):

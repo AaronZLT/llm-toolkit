@@ -17,10 +17,26 @@ from .arguments import (
 )
 from .utils import (
     print_rank_0,
+    gsi,
 )
 
 IGNORE_INDEX = -100
-DEFAULT_PAD_TOKEN = "<[PAD]>"
+
+
+def get_eos_token(tokenizer: transformers.PreTrainedTokenizer) -> str:
+    """
+    get eos token, since some specific tokenizers have more than one eos tokens.
+    For example, llama-3 has two eos tokens, <|end_of_text|> and <|eot_id|>, where <|eot_id|> is used in multi-turn chat.
+
+    <|eot_id|> for llama-3
+    <|end|> for phi3
+    tokenizer.eos_token for other models
+    """
+
+    if "<|eot_id|>" in tokenizer.get_vocab():
+        return "<|eot_id|>"
+    else:
+        return tokenizer.eos_token
 
 
 @dataclass
@@ -33,12 +49,8 @@ class DataCollatorForCausalLM(object):
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         # Extract elements
-        sources = [
-            f"{self.tokenizer.bos_token}{example['input']}" for example in instances
-        ]
-        targets = [
-            f"{example['output']}{self.tokenizer.eos_token}" for example in instances
-        ]
+        sources = [example["input"] for example in instances]
+        targets = [example["output"] for example in instances]
         # Tokenize
         tokenized_sources_with_prompt = self.tokenizer(
             sources,
@@ -88,26 +100,19 @@ class DataCollatorForCausalLM(object):
         return data_dict
 
 
-r"""
-Below is the train prompt and preprocess functions for generating train dataset.
-Most of the training prompts are aligned with lm-eval, which is the same as 🤗 Open LLM Leaderboard.
-"""
-
-
 @dataclass
 class SFTPrompt:
-    question: str = "Question: {question}\nAnswer: "
+    """
+    Below is the train prompt and preprocess functions for generating train dataset.
+    Most of the training prompts are aligned with lm-eval, which is the same as 🤗 Open LLM Leaderboard.
+    """
+
+    question: str = "Question: {question}\n\nAnswer: "
     answer: str = "{answer}\n\n"
     instruction_input: str = (
-        "Below is an instruction that describes a task, paired with an input that provides further context. "
-        "Write a response that appropriately completes the request.\n\n"
-        "#### Instruction:\n{instruction}\n\n#### Input:\n{input}\n\n#### Response: "
+        "Instruction: {instruction}\n\nInput: {input}\n\nResponse: "
     )
-    instruction: str = (
-        "Below is an instruction that describes a task. "
-        "Write a response that appropriately completes the request.\n\n"
-        "#### Instruction:\n{instruction}\n\n#### Response: "
-    )
+    instruction: str = "Instruction: {instruction}\n\nResponse: "
     truthfulqa_6shot: str = "\
         Q: What is human life expectancy in the United States?\n\
         A: Human life expectancy in the United States is 78 years.\n\n\
@@ -143,221 +148,266 @@ def extract_super_natural_instructions_data(examples, extract_reformulations=Fal
     return out
 
 
-def preprocess_alpaca(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        if example.get("input", "") != "":
-            return {
-                "input": SFTPrompt.instruction_input.format(
+def apply_chat_template(
+    system_content: str,
+    input_content: str,
+    output_content: str,
+    eos_token: str,
+    tokenizer: transformers.PreTrainedTokenizer,
+):
+    if tokenizer.chat_template:
+        chat = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": input_content},
+        ]
+        _source = tokenizer.apply_chat_template(
+            chat, tokenize=False, add_generation_prompt=True
+        )
+        _target = f"{output_content}{eos_token}"
+    else:
+        _source = f"{tokenizer.bos_token}\n\n{system_content}\n\n{input_content}"
+        _target = f"{output_content}{eos_token}"
+
+    return _source, _target
+
+
+class PreprocessDataset:
+    """
+    A processed dataset is supposed to have the following format:
+
+    system: This is the system message for LLMs, such as an introduction to the training data.
+    input: This is the input with basic instructions.
+    output: Contains only the output.
+
+    The system, input, and output will be sent to `apply_chat_template`.
+    """
+
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer):
+        self.tokenizer = tokenizer
+        self.eos_token = get_eos_token(self.tokenizer)
+        self.FORMAT_FUNCTIONS = {
+            "mmlu": self._preprocess_mmlu,
+            "alpaca": self._preprocess_alpaca,
+            "gsm8k": self._preprocess_gsm8k,
+            "tuluv3": self._preprocess_tuluv3,
+            "wikitext2": self._preprocess_wikitext2,
+            "math": self._preprocess_math,
+            "metamath": self._preprocess_metamath,
+            "metamath40k": self._preprocess_metamath,
+            "wizardlm70k": self._preprocess_wizardlm,
+            "codefeedback": self._preprocess_codefeedback,
+            "input-output": self._preprocess_default,
+        }
+
+    def register_format_function(self, name: str, func):
+        """
+        Dynamically register a new dataset preprocessing function.
+        """
+        self.FORMAT_FUNCTIONS[name] = func
+
+    def preprocess(self, dataset_name_or_path: str, dataset: datasets.Dataset):
+        """
+        Preprocess the dataset based on the dataset name or path.
+        """
+        if dataset_name_or_path in self.FORMAT_FUNCTIONS:
+            return self.FORMAT_FUNCTIONS[dataset_name_or_path](dataset)
+
+        # Handle default case when no specific format function is found
+        print_rank_0(
+            f"Dataset format method for '{dataset_name_or_path}' is not implemented. Using default input-output format."
+        )
+        try:
+            return self.FORMAT_FUNCTIONS["input-output"](dataset)
+        except KeyError:
+            raise NotImplementedError(
+                f"Default input-output format failed for '{dataset_name_or_path}'. Please check the structure of the dataset."
+            )
+
+    def _preprocess_default(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the input-output pair dataset.
+        """
+        system_message = "You are a helpful assistant. Below is an instruction that describes a task. Write a response that appropriately completes the request."
+
+        def _preprocess_doc(example):
+            input_str = SFTPrompt.instruction.format(instruction=example["input"])
+            output_str = example["output"]
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
+            )
+            return {"input": _source, "output": _target}
+
+        return dataset.map(_preprocess_doc, num_proc=gsi.info["n_cpus"])
+
+    def _preprocess_mmlu(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the MMLU dataset.
+        """
+        system_message = (
+            "You are a helpful assistant who can select the most appropriate "
+            "answer to each user question from a set of given multiple-choice options."
+        )
+        labels = ["A", "B", "C", "D"]
+
+        def _preprocess_example(example):
+            question_data = example["train"]
+            input_str = f"Question: {question_data['question']}\n"
+            for label, choice in zip(labels, question_data["choices"]):
+                input_str += f"{label}. {choice}\n"
+            input_str += "Answer: "
+
+            output_str = f"{labels[question_data['answer']]}. {question_data['choices'][question_data['answer']]}"
+
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
+            )
+            return {"input": _source, "output": _target}
+
+        return dataset.map(
+            _preprocess_example, num_proc=gsi.info["n_cpus"]
+        ).train_test_split(test_size=0.1)
+
+    def _preprocess_alpaca(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the Alpaca dataset.
+        """
+        system_message = (
+            "You are a helpful assistant. Below is an instruction that describes a task, "
+            "paired with an input that provides further context. Write a response that appropriately completes the request."
+        )
+
+        def _preprocess_example(example):
+            if example.get("input", "").strip():
+                input_str = SFTPrompt.instruction_input.format(
                     instruction=example["instruction"], input=example["input"]
-                ),
-                "output": example["output"],
-            }
-        else:
-            return {
-                "input": SFTPrompt.instruction.format(
+                )
+            else:
+                input_str = SFTPrompt.instruction.format(
                     instruction=example["instruction"]
-                ),
-                "output": example["output"],
-            }
+                )
+            output_str = example["output"]
 
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_gsm8k(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {
-            "input": SFTPrompt.instruction.format(instruction=example["question"]),
-            "output": example["answer"],
-        }
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_truthfulqa_mc1(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        prompt_format_input = SFTPrompt.question
-        prompt_format_output = SFTPrompt.answer
-        return {
-            "input": prompt_format_input.format(**example),
-            "output": prompt_format_output.format(**example),
-        }
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_hellaswag(dataset: datasets.Dataset) -> datasets.Dataset:
-    new_dataset = []
-
-    def _preprocess_text(text):
-        text = text.strip()
-        text = text.replace(" [title]", ". ")
-        text = re.sub("\\[.*?\\]", "", text)
-        text = text.replace("  ", " ")
-        return text
-
-    def _process_doc(doc):
-        data_slice = {}
-
-        ctx = doc["ctx_a"] + " " + doc["ctx_b"].capitalize()
-        out_doc = {
-            "query": _preprocess_text(doc["activity_label"] + ": " + ctx),
-            "choices": [_preprocess_text(ending) for ending in doc["endings"]],
-            "gold": doc["label"],
-        }
-        for i in range(len(out_doc["choices"])):
-            data_slice["input"] = f"{out_doc['query']}{out_doc['choices'][i]}"
-            data_slice["output"] = "1" if out_doc["gold"] == str(i) else "-1"
-            new_dataset.append(data_slice)
-
-    dataset = dataset.map(_process_doc)
-    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
-    return new_dataset
-
-
-def preprocess_wikitext2(dataset: datasets.Dataset) -> datasets.Dataset:
-    new_dataset = []
-
-    def _preprocess_doc(example):
-        if len(example["text"]) > 1:
-            data_slice = {}
-            data_slice["input"] = example["text"]
-            data_slice["output"] = ""
-            new_dataset.append(data_slice)
-
-    dataset.map(_preprocess_doc)
-    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
-    return new_dataset
-
-
-def preprocess_e2e(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {"input": example["meaning_representation"], "output": example["target"]}
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_math(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {
-            "input": SFTPrompt.question.format(example["question"]),
-            "output": SFTPrompt.answer.format(example["answer"]),
-        }
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_commonsense(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {"input": example["instruction"], "output": example["output"]}
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_chip2(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {
-            "input": example["text"].split("\n<bot>: ")[0].replace("<human>: ", ""),
-            "output": example["text"].split("\n<bot>: ")[1],
-        }
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_selfinstruct(dataset: datasets.Dataset) -> datasets.Dataset:
-    for old, new in [["prompt", "input"], ["completion", "output"]]:
-        dataset = dataset.rename_column(old, new)
-    return dataset
-
-
-def preprocess_hhrlhf(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {"input": "", "output": example["chosen"]}
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_oasst1(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {"input": example["inputs"], "output": example["targets"]}
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_metamath(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {
-            "input": SFTPrompt.instruction.format(instruction=example["query"]),
-            "output": example["response"],
-        }
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_wizardlm(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {
-            "input": SFTPrompt.instruction.format(instruction=example["instruction"]),
-            "output": example["output"],
-        }
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_codefeedback(dataset: datasets.Dataset) -> datasets.Dataset:
-    def _preprocess_doc(example):
-        return {
-            "input": SFTPrompt.instruction.format(instruction=example["query"]),
-            "output": example["answer"],
-        }
-
-    return dataset.map(_preprocess_doc)
-
-
-def preprocess_tulu_v3(dataset: datasets.Dataset) -> datasets.Dataset:
-    new_dataset = []
-
-    def _process_doc(example):
-        if len(example["messages"]) == 2:
-            user_content = next(
-                item["content"]
-                for item in example["messages"]
-                if item["role"] == "user"
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
             )
-            assistant_content = next(
-                item["content"]
-                for item in example["messages"]
-                if item["role"] == "assistant"
+            return {"input": _source, "output": _target}
+
+        return dataset.map(_preprocess_example, num_proc=gsi.info["n_cpus"])
+
+    # todo: use a better system prompt for gsm8k
+    def _preprocess_gsm8k(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the GSM8K dataset.
+        """
+        system_message = "You are a helpful assistant. Below is an instruction that describes a task. Write a response that appropriately completes the request."
+
+        def _preprocess_doc(example):
+            input_str = SFTPrompt.instruction.format(instruction=example["question"])
+            output_str = example["answer"]
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
             )
-            new_dataset.append(
-                {
-                    "input": SFTPrompt.instruction.format(instruction=user_content),
-                    "output": assistant_content,
-                }
+            return {"input": _source, "output": _target}
+
+        return dataset.map(_preprocess_doc, num_proc=gsi.info["n_cpus"])
+
+    # todo
+    def _preprocess_wikitext2(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        new_dataset = []
+
+        def _preprocess_doc(example):
+            if len(example["text"]) > 1:
+                data_slice = {}
+                data_slice["input"] = example["text"]
+                data_slice["output"] = ""
+                new_dataset.append(data_slice)
+
+        dataset.map(_preprocess_doc)
+        new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
+        return new_dataset
+
+    # todo: use a better system prompt for math
+    def _preprocess_math(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the MATH dataset.
+        """
+        system_message = "You are a helpful assistant. Answer to each user question."
+
+        def _preprocess_doc(example):
+            input_str = SFTPrompt.question.format(example["question"])
+            output_str = example["answer"]
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
+            )
+            return {"input": _source, "output": _target}
+
+        return dataset.map(_preprocess_doc, num_proc=gsi.info["n_cpus"])
+
+    def _preprocess_metamath(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the Metamath dataset.
+        """
+        system_message = "You are a helpful assistant. Below is an instruction that describes a task. Write a response that appropriately completes the request."
+
+        def _preprocess_doc(example):
+            input_str = SFTPrompt.instruction.format(instruction=example["query"])
+            output_str = example["response"]
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
+            )
+            return {"input": _source, "output": _target}
+
+        return dataset.map(_preprocess_doc, num_proc=gsi.info["n_cpus"])
+
+    def _preprocess_wizardlm(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the wizardlm dataset.
+        """
+        system_message = "You are a helpful assistant. Below is an instruction that describes a task. Write a response that appropriately completes the request."
+
+        def _preprocess_doc(example):
+            input_str = SFTPrompt.instruction.format(instruction=example["instruction"])
+            output_str = example["output"]
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
+            )
+            return {"input": _source, "output": _target}
+
+        return dataset.map(_preprocess_doc, num_proc=gsi.info["n_cpus"])
+
+    def _preprocess_codefeedback(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the codefeedback dataset.
+        """
+        system_message = "You are a helpful assistant. Below is an instruction that describes a code generation task. Write a answer that appropriately completes the request."
+
+        def _preprocess_doc(example):
+            input_str = SFTPrompt.instruction.format(instruction=example["query"])
+            output_str = example["answer"]
+            _source, _target = apply_chat_template(
+                system_message, input_str, output_str, self.eos_token, self.tokenizer
+            )
+            return {"input": _source, "output": _target}
+
+        return dataset.map(_preprocess_doc, num_proc=gsi.info["n_cpus"])
+
+    def _preprocess_tuluv3(self, dataset: datasets.Dataset) -> datasets.Dataset:
+        """
+        Preprocess the tulu v3 dataset.
+        """
+        if not self.tokenizer.chat_template:
+            raise NotImplementedError(
+                "Tulu v3 is a chat dataset, thus a chat template is required."
             )
 
-    dataset = dataset.map(_process_doc)
-    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.2)
-    return new_dataset
+        def _preprocess_doc(example):
+            input_str = example["messages"]
+            _source = self.tokenizer.apply_chat_template(
+                input_str, tokenize=False, add_generation_prompt=False
+            )
+            return {"input": _source, "output": ""}
 
-
-def preprocess_mmlu(dataset: datasets.Dataset) -> datasets.Dataset:
-    new_dataset = []
-    labels = ["A", "B", "C", "D"]
-
-    def _preprocess_doc(example):
-        slice = example["train"]
-        input = f"Question: {slice['question']}\n"
-
-        for label, choice in zip(labels, slice["choices"]):
-            input = input + f"{label}. {choice}\n"
-        input = input + "Answer: "
-        output = f"{labels[slice['answer']]}. {slice['choices'][slice['answer']]}"
-
-        new_dataset.append({"input": input, "output": output})
-
-    dataset.map(_preprocess_doc)
-    new_dataset = Dataset.from_list(new_dataset).train_test_split(test_size=0.1)
-    return new_dataset
+        return dataset.map(_preprocess_doc, num_proc=gsi.info["n_cpus"])
 
 
 """
@@ -379,7 +429,7 @@ DATASETS_ARGS = {
     "oasst1": ("timdettmers/openassistant-guanaco", {}),
     "gsm8k": ("openai/gsm8k", {"name": "main"}),
     "hellaswag": ("Rowan/hellaswag", {}),
-    "wikitext2": ("wikitext", {"name": "wikitext-2-raw-v1"}),
+    "wikitext2": ("EleutherAI/wikitext_document_level", {"name": "wikitext-2-raw-v1"}),
     "e2e": ("GEM/e2e_nlg", {}),
     "math": ("Lohse/math", {}),
     "commonsense": ("Lohse/commonsense", {}),
@@ -389,30 +439,6 @@ DATASETS_ARGS = {
     "codefeedback": ("m-a-p/CodeFeedback-Filtered-Instruction", {}),
     "tuluv3": ("allenai/tulu-3-sft-mixture", {}),
     "mmlu": ("cais/mmlu", {"name": "auxiliary_train", "split": "train"}),
-}
-
-FORMAT_FUNCTIONS = {
-    "input-output": lambda x: x,
-    "alpaca": preprocess_alpaca,
-    "alpaca-clean": preprocess_alpaca,
-    "alpaca-gpt4": preprocess_alpaca,
-    "alpaca-dummy": preprocess_alpaca,
-    "gsm8k": preprocess_gsm8k,
-    "hellaswag": preprocess_hellaswag,
-    "chip2": preprocess_chip2,
-    "self-instruct": preprocess_selfinstruct,
-    "hh-rlhf": preprocess_hhrlhf,
-    "oasst1": preprocess_oasst1,
-    "wikitext2": preprocess_wikitext2,
-    "e2e": preprocess_e2e,
-    "math": preprocess_math,
-    "commonsense": preprocess_commonsense,
-    "metamath": preprocess_metamath,
-    "metamath40k": preprocess_metamath,
-    "wizardlm70k": preprocess_wizardlm,
-    "codefeedback": preprocess_codefeedback,
-    "tuluv3": preprocess_tulu_v3,
-    "mmlu": preprocess_mmlu,
 }
 
 
@@ -455,32 +481,18 @@ def load_data(dataset_name_or_path):
             )
 
 
-def format_dataset(dataset_name_or_path, dataset):
-    if dataset_name_or_path in FORMAT_FUNCTIONS:
-        dataset = FORMAT_FUNCTIONS[dataset_name_or_path](dataset)
-    else:
-        print_rank_0(
-            f"dataset format method for {dataset_name_or_path} is not implemented, trying default input-output format."
-        )
-        try:
-            dataset = FORMAT_FUNCTIONS["input-output"](dataset)
-        except:
-            raise NotImplementedError(
-                f"default input-output format has failed to format '{dataset_name_or_path}', please check the structure of '{dataset_name_or_path}'."
-            )
-    return dataset
-
-
 def build_data_module(
     tokenizer: transformers.PreTrainedTokenizer,
     dataset_name_or_path,
     args: DataArguments = None,
 ) -> Dict:
+    preprocessdataset = PreprocessDataset(tokenizer=tokenizer)
+
     if args is None:
         args = DataArguments(dataset_name_or_path=dataset_name_or_path)
 
     dataset = load_data(dataset_name_or_path)
-    dataset = format_dataset(dataset_name_or_path, dataset)
+    dataset = preprocessdataset.preprocess(dataset_name_or_path, dataset)
 
     if "eval" in dataset:
         eval_dataset = dataset["eval"]
@@ -497,7 +509,8 @@ def build_data_module(
     if args.max_eval_samples is not None and len(eval_dataset) > args.max_eval_samples:
         eval_dataset = eval_dataset.select(range(args.max_eval_samples))
     eval_dataset = eval_dataset.map(
-        lambda x: {"length": len(x["input"]) + len(x["output"])}
+        lambda x: {"length": len(x["input"]) + len(x["output"])},
+        num_proc=gsi.info["n_cpus"],
     )
 
     train_dataset = dataset["train"]
@@ -507,7 +520,8 @@ def build_data_module(
     ):
         train_dataset = train_dataset.select(range(args.max_train_samples))
     train_dataset = train_dataset.map(
-        lambda x: {"length": len(x["input"]) + len(x["output"])}
+        lambda x: {"length": len(x["input"]) + len(x["output"])},
+        num_proc=gsi.info["n_cpus"],
     )
     longest_sequence = max(train_dataset, key=lambda x: x["length"])
     longest_sequence_length = len(

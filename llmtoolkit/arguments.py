@@ -135,7 +135,7 @@ class DataArguments:
     hard_padding: bool = field(
         default=False,
         metadata={
-            "help": "Force pad the length of input_ids (sequence length) to: source_max_len + target_max_len. Set this to True may impact throughput, but is recommend in benchmark. Default = False."
+            "help": "Force pad the length of input_ids (sequence length) to: source_max_len + target_max_len. Set this to True may impact throughput, but is recommend in benchmark. Set to False is recommend in training. Default = False."
         },
     )
     dataset_name_or_path: str = field(

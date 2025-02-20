@@ -70,7 +70,7 @@ def vllm_inference(
     vllm_kwargs = {
         "model": model_name_or_path,
         "dtype": torch.bfloat16,
-        "tensor_parallel_size": gsi.info["ngpu"],
+        "tensor_parallel_size": gsi.info["n_gpus"],
         "gpu_memory_utilization": 0.8,
     }
     if load_in_4bit:

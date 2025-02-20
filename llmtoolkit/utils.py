@@ -184,6 +184,7 @@ def is_ipex_available():
 
 class hardware_info:
     def __init__(self) -> None:
+        self.n_cpus = os.cpu_count()
         self.n_gpus = 0
         self.gpu_info = {}
         self.gpu_info_detailed = []
@@ -248,7 +249,8 @@ class global_system_info:
         self.hardware = hardware_info()
 
         self.info = {
-            "ngpu": self.hardware.n_gpus,
+            "n_cpus": self.hardware.n_cpus,
+            "n_gpus": self.hardware.n_gpus,
             "gpu_info": self.hardware.gpu_info,
             "overhead (s)": {},
         }
