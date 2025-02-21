@@ -65,13 +65,13 @@ def vllm_inference(
     max_tokens = source_max_len + target_max_len
     sampling_params = SamplingParams(temperature=0.0, top_p=0.1, max_tokens=max_tokens)
 
-    if gsi.info["ngpu"] >= 2:
+    if gsi.info["n_gpus"] >= 2:
         print_rank_0('WARNING: 2 or more gpus are detected, and VLLM will use all gpus to inference. However, a RuntimeError may raised: "An attempt has been made to start a new process before the current process ...". To avoid this error, wrap your code within " if __name__ == "__main__": ". This is a bug in VLLM, an expected behavior when tp >= 2 & ray. For more info please refer to https://github.com/vllm-project/vllm/pull/5669.')
     vllm_kwargs = {
         "model": model_name_or_path,
         "dtype": torch.bfloat16,
         "tensor_parallel_size": gsi.info["n_gpus"],
-        "gpu_memory_utilization": 0.8,
+        "gpu_memory_utilization": 0.9,
     }
     if load_in_4bit:
         vllm_kwargs.update(
