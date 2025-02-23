@@ -89,8 +89,47 @@ def apply_spare(model, named_mask: dict):
 
 
 @torch.no_grad()
+def mergeW2AB(W, A, B):
+    if len(W.shape) != 2 or len(A.shape) != 2 or len(B.shape) != 2:
+        raise ValueError()
+    if min(A.shape) != min(B.shape):
+        raise ValueError()
+
+    r = min(A.shape)
+    M = W + B @ A
+    M = M.to(dtype=torch.float32)
+    U, S, Vh = torch.linalg.svd(M, full_matrices=True)
+
+    # Extract the top r singular values and corresponding singular vectors:
+    # U_r -> d x r matrix (top r left singular vectors)
+    # S_r -> r singular values (top r)
+    # Vh_r -> r x d matrix (top r right singular vectors transposed)
+    U_r = U[:, :r]
+    S_r = S[:r]
+    Vh_r = Vh[:r, :]
+
+    # Compute Sigma_r^(1/2) as a diagonal matrix with the square roots of S_r.
+    # Since S_r contains nonnegative singular values, taking the square root works elementwise.
+    sqrt_S_r = torch.sqrt(S_r)
+    Sigma_r_half = torch.diag(sqrt_S_r)
+
+    # Form the optimal factors:
+    # X_opt = B + B1 = U_r * Sigma_r^(1/2)
+    # Y_opt = A + A1 = Sigma_r^(1/2) * V_r^T. Note: V_r^T is given by Vh_r.
+    X_opt = U_r @ Sigma_r_half
+    Y_opt = Sigma_r_half @ Vh_r
+
+    return Y_opt.to(dtype=A.dtype), X_opt.to(dtype=B.dtype)
+
+
+@torch.no_grad()
 def prune_magnitude(
-    model, sparsity_ratio: float = 0.5, prune_n=0, prune_m=0, offload=True
+    model,
+    sparsity_ratio: float = 0.5,
+    prune_n=0,
+    prune_m=0,
+    offload=True,
+    sparse_preserve_accuracy=False,
 ) -> List:
     def _get_mask_prune_magnitude(
         W,
@@ -163,7 +202,26 @@ def prune_magnitude(
                             )
                         }
                     )
-                    dequantize_base_layer_data[named_mask[base_layer_name].cuda()] = 0
+                    if sparse_preserve_accuracy:
+                        tmp_W = dequantize_base_layer_data.detach().clone()
+                        dequantize_base_layer_data[
+                            named_mask[base_layer_name].cuda()
+                        ] = 0
+                        tmp_W = tmp_W - dequantize_base_layer_data
+                        m.lora_A.default.weight.data, m.lora_B.default.weight.data = (
+                            mergeW2AB(
+                                tmp_W,
+                                m.lora_A.default.weight.data,
+                                m.lora_B.default.weight.data,
+                            )
+                        )
+                        # check whether tmp_W.to("cpu")
+                        del tmp_W
+                    else:
+                        dequantize_base_layer_data[
+                            named_mask[base_layer_name].cuda()
+                        ] = 0
+
                     m.base_layer.weight.data, _ = quantize_4bit(
                         A=dequantize_base_layer_data,
                         absmax=quant_state.absmax,
@@ -193,12 +251,36 @@ def prune_magnitude(
                         }
                     )
             model.unmerge_adapter()
-            for n, m in model.named_modules():
-                if n in named_mask:
-                    print_rank_0(
-                        f"Pruning layer - {n}, sparsity ratio = {sparsity_ratio}"
-                    )
-                    m.weight.data[named_mask[n].cuda()] = 0
+            if sparse_preserve_accuracy:
+                for n, m in model.named_modules():
+                    if isinstance(m, peft.tuners.lora.layer.Linear):
+                        base_layer_name = find_module_name(model, m.base_layer)
+                        if base_layer_name in named_mask:
+                            tmp_W = m.base_layer.weight.data.detach().clone()
+                            print_rank_0(
+                                f"Pruning layer - {base_layer_name}, sparsity ratio = {sparsity_ratio}"
+                            )
+                            m.base_layer.weight.data[
+                                named_mask[base_layer_name].cuda()
+                            ] = 0
+                            tmp_W = tmp_W - m.base_layer.weight.data
+                            (
+                                m.lora_A.default.weight.data,
+                                m.lora_B.default.weight.data,
+                            ) = mergeW2AB(
+                                tmp_W,
+                                m.lora_A.default.weight.data,
+                                m.lora_B.default.weight.data,
+                            )
+                            # check whether tmp_W.to("cpu")
+                            del tmp_W
+            else:
+                for n, m in model.named_modules():
+                    if n in named_mask:
+                        print_rank_0(
+                            f"Pruning layer - {n}, sparsity ratio = {sparsity_ratio}"
+                        )
+                        m.weight.data[named_mask[n].cuda()] = 0
         else:
             for n, m in model.named_modules():
                 if isinstance(m, nn.Linear):

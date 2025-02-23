@@ -96,6 +96,7 @@ def train(
                 DynamicSparseCallback(
                     model=model,
                     sparsity_ratio=training_args.sparsity_ratio,
+                    sparse_preserve_accuracy = training_args.sparse_preserve_accuracy,
                     sparse_warmup_ratio=training_args.sparse_warmup_ratio,
                     sparse_warmup_steps=training_args.sparse_warmup_steps,
                     output_dir=training_args.output_dir,
@@ -105,6 +106,8 @@ def train(
             trainer.add_callback(
                 StaticSparseCallback(
                     model=model,
+                    sparsity_ratio=training_args.sparsity_ratio,
+                    sparse_preserve_accuracy = training_args.sparse_preserve_accuracy,
                     output_dir=training_args.output_dir,
                 )
             )

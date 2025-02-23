@@ -317,6 +317,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=2,
         metadata={"help": "How many round will the sparse warmup goes."},
     )
+    sparse_preserve_accuracy: bool = field(
+        default=False,
+        metadata={"help": "Merge sparse W into A and B to preserve accuracy. Default is False."},
+    )
     unify_save: bool = field(
         default=False,
         metadata={
