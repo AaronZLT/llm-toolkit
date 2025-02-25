@@ -63,7 +63,7 @@ def find_module_name(model, target_module):
 
 # todo: modify uint8 directly without dequantize and quantize
 @torch.no_grad()
-def apply_spare(model, named_mask: dict):
+def apply_sparse(model, named_mask: dict):
     for n, m in model.named_modules():
         if n in named_mask:
             print_rank_0(f"Applying sparse on layer - {n}")
@@ -240,6 +240,9 @@ def prune_magnitude(
             )
     else:
         if isinstance(model, PeftModel):
+            lora_scaling = (
+                model.peft_config["default"].lora_alpha / model.peft_config["default"].r
+            )
             model.merge_adapter()
             for n, m in model.named_modules():
                 if isinstance(m, peft.tuners.lora.layer.Linear):
@@ -275,6 +278,7 @@ def prune_magnitude(
                                 tmp_W,
                                 m.lora_A.default.weight.data,
                                 m.lora_B.default.weight.data,
+                                lora_scaling
                             )
                             # check whether tmp_W.to("cpu")
                             del tmp_W
