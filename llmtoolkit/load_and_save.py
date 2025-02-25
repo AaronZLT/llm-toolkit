@@ -13,7 +13,7 @@ from peft import (
 )
 
 from .sparse import (
-    apply_spare,
+    apply_sparse,
 )
 from .utils import (
     print_rank_0,
