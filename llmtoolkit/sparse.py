@@ -89,14 +89,14 @@ def apply_spare(model, named_mask: dict):
 
 
 @torch.no_grad()
-def mergeW2AB(W, A, B):
+def mergeW2AB(W, A, B, lora_scaling):
     if len(W.shape) != 2 or len(A.shape) != 2 or len(B.shape) != 2:
         raise ValueError()
     if min(A.shape) != min(B.shape):
         raise ValueError()
 
     r = min(A.shape)
-    M = W + B @ A
+    M = W + (B @ A) * lora_scaling
     M = M.to(dtype=torch.float32)
     U, S, Vh = torch.linalg.svd(M, full_matrices=True)
 
@@ -190,10 +190,13 @@ def prune_magnitude(
                         blocksize=quant_state.blocksize,
                         quant_type=quant_state.quant_type,
                     )
+                    lora_scaling = (
+                        model.peft_config["default"].lora_alpha
+                        / model.peft_config["default"].r
+                    )
                     target_layer_data = dequantize_base_layer_data + (
                         (m.lora_B.default.weight.data @ m.lora_A.default.weight.data)
-                        * model.peft_config["default"].lora_alpha
-                        / model.peft_config["default"].r
+                        * lora_scaling
                     )
                     named_mask.update(
                         {
@@ -213,6 +216,7 @@ def prune_magnitude(
                                 tmp_W,
                                 m.lora_A.default.weight.data,
                                 m.lora_B.default.weight.data,
+                                lora_scaling,
                             )
                         )
                         # check whether tmp_W.to("cpu")
