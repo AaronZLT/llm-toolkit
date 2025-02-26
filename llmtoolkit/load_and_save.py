@@ -74,7 +74,7 @@ def load(
 
     if sparse_named_mask_path:
         named_mask = torch.load(sparse_named_mask_path)
-        apply_spare(model, named_mask)
+        apply_sparse(model, named_mask)
 
     return model, target_tokenizer
 
