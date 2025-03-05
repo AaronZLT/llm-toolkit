@@ -222,32 +222,48 @@ class PrepareDataset:
         """
         system_message = (
             "You are a helpful assistant who can select the most appropriate "
-            "answer to each user question from a set of given multiple-choice options."
+            "answer to each user question from a set of given multiple-choice options. "
+            "When responding, always begin your answer with the full option (letter and text)."
         )
         labels = ["A", "B", "C", "D"]
         dataset = load_dataset("cais/mmlu", name="all")
         dataset["train"] = dataset.pop("auxiliary_train")
 
-        def _preprocess_example(example):
-            # question_data = example["train"]
-            input_str = f"Question: {example['question']}\n"
-            for label, choice in zip(labels, example["choices"]):
-                input_str += f"{label}. {choice}\n"
-            input_str += "Answer: "
+        def preprocess_test():
+            def _preprocess_example(example):
+                pass
+            # dataset["test"] = dataset["test"].map(
+            #     _preprocess_example, num_proc=gsi.info["n_cpus"]
+            # )
 
-            output_str = (
-                f"{labels[example['answer']]}. {example['choices'][example['answer']]}"
+        def preprocess_train():
+            def _preprocess_example(example):
+                input_str = f"Question: {example['question']}\n"
+                for label, choice in zip(labels, example["choices"]):
+                    input_str += f"{label}. {choice}\n"
+                input_str += "Answer: "
+
+                output_str = f"{labels[example['answer']]}. {example['choices'][example['answer']]}"
+
+                chat = [
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": input_str},
+                    {"role": "assistant", "content": output_str},
+                ]
+                _source, _target = apply_chat_template_to_train(chat, self.tokenizer)
+
+                return {"input": _source, "output": _target}
+
+            dataset["train"] = dataset["train"].map(
+                _preprocess_example, num_proc=gsi.info["n_cpus"]
             )
-            chat = [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": input_str},
-                {"role": "assistant", "content": output_str},
-            ]
-            _source, _target = apply_chat_template_to_train(chat, self.tokenizer)
-
-            return {"input": _source, "output": _target}
-
-        return dataset.map(_preprocess_example, num_proc=gsi.info["n_cpus"])
+            dataset["test"] = dataset["test"].map(
+                _preprocess_example, num_proc=gsi.info["n_cpus"]
+            )
+        
+        preprocess_train()
+        preprocess_test()
+        return dataset
 
     def prepare_alpaca(self) -> datasets.Dataset:
         """
@@ -527,10 +543,6 @@ def build_data_module(
         eval_dataset = dataset["test"]
     if args.max_eval_samples is not None and len(eval_dataset) > args.max_eval_samples:
         eval_dataset = eval_dataset.select(range(args.max_eval_samples))
-    eval_dataset = eval_dataset.map(
-        lambda x: {"length": len(x["input"]) + len(x["output"])},
-        num_proc=gsi.info["n_cpus"],
-    )
 
     train_dataset = dataset["train"]
     if (

@@ -174,8 +174,8 @@ class GSM8KEvaluationStrategy(EvaluationStrategy):
 
 class MMLUEvaluationStrategy(EvaluationStrategy):
     def is_correct(self, golden: str, predicate: str) -> bool:
-        golden_choice = golden[0]
-        predicate_choice = predicate[0]
+        golden_choice = golden.strip()[0]
+        predicate_choice = predicate.strip()[0]
         if golden_choice not in ["A", "B", "C", "D"]:
             raise ValueError(f"The first letter of label '{golden}' not in A, B, C, D. Aborting.")
         return golden_choice == predicate_choice
