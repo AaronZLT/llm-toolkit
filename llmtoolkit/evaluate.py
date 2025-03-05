@@ -212,6 +212,8 @@ def infly_evaluate(
 ) -> float:
     if task == "gsm8k":
         strategy = GSM8KEvaluationStrategy()
+    elif task == "mmlu":
+        strategy = MMLUEvaluationStrategy()
     else:
         strategy = DefaultEvaluationStrategy()
 
