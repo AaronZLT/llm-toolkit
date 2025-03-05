@@ -17,7 +17,7 @@ from .callbacks import (
 )
 from .dataset import (
     SFTPrompt,
-    PreprocessDataset,
+    PrepareDataset,
     build_data_module,
 )
 from .evaluate import (

@@ -172,6 +172,14 @@ class GSM8KEvaluationStrategy(EvaluationStrategy):
                 print(f"'{result}' is invalid thus cannot be transformed into numbers")
                 return 0
 
+class MMLUEvaluationStrategy(EvaluationStrategy):
+    def is_correct(self, golden: str, predicate: str) -> bool:
+        golden_choice = golden[0]
+        predicate_choice = predicate[0]
+        if golden_choice not in ["A", "B", "C", "D"]:
+            raise ValueError(f"The first letter of label '{golden}' not in A, B, C, D. Aborting.")
+        return golden_choice == predicate_choice
+
 
 class Evaluator:
     def __init__(self, strategy: EvaluationStrategy):
