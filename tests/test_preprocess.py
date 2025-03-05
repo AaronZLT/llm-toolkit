@@ -7,16 +7,32 @@ from transformers import (
 )
 from datasets import load_dataset, Dataset
 
-from llmtoolkit import Prepeocess_dataset
+from llmtoolkit import (
+    get_args,
+    get_accelerate_model,
+    build_data_module,
+    get_unique_key,
+    train,
+    TrainingArguments,
+    ModelArguments,
+    DataArguments,
+    print_rank_0,
+)
 
 
-LLAMA3_8B_INST = "/mnt/sdb/zhanglongteng/sdd/zhanglongteng/llama-3-8B-Instruct"
-LLAMA2_7B_INST = "/mnt/sdb/zhanglongteng/sdd/zhanglongteng/Llama-2-7b-hf"
-DEEPSEEK_R1 = "/mnt/sdb/zhanglongteng/sdd/zhanglongteng/DeepSeek-R1"
+LLAMA3_8B_INST = "/Users/ltzhang/repo/models/Meta-Llama-3-8B-Instruct"
+LLAMA2_7B = "/Users/ltzhang/repo/models/Llama-2-7b-hf"
+LLAMA2_7B_CHAT = "/Users/ltzhang/repo/models/Llama-2-7b-chat-hf"
 
-tokenizer = AutoTokenizer.from_pretrained(LLAMA3_8B_INST)
+tokenizer = AutoTokenizer.from_pretrained(LLAMA2_7B)
 tokenizer.padding_side = "right"
-
-dataset = load_dataset("cais/mmlu", name = "auxiliary_train", split = "train")
-print(dataset)
-Prepeocess_dataset.preprocess_mmlu(dataset, tokenizer)
+dataargs = DataArguments(
+    dataset_name_or_path="mmlu",
+    source_max_len=512,
+    target_max_len=512,
+)
+data_module = build_data_module(tokenizer, "mmlu", dataargs)
+data_module = build_data_module(tokenizer, "metamath40k", dataargs)
+data_module = build_data_module(tokenizer, "alpaca", dataargs)
+data_module = build_data_module(tokenizer, "gsm8k", dataargs)
+data_module = build_data_module(tokenizer, "codefeedback", dataargs)
