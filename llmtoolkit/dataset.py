@@ -108,6 +108,7 @@ default_template = """
     {% set loop_messages = messages %}
 {% endif -%}
 {{ bos_token }}
+
 {% if system_message != '' %}
 {{ system_message }}
 
@@ -138,7 +139,7 @@ def apply_chat_template_to_train(
             add_generation_prompt=True,
             chat_template=default_template,
         )
-    _target = f"{chat[-1]['content']}{tokenizer.eos_token}"
+    _target = f"{chat[-1]['content']}\n\n{tokenizer.eos_token}"
 
     return _source, _target
 
@@ -221,9 +222,9 @@ class PrepareDataset:
         MMLU dataset.
         """
         system_message = (
-            "You are a helpful assistant who can select the most appropriate "
-            "answer to each user question from a set of given multiple-choice options. "
-            "When responding, always begin your answer with the full option (letter and text)."
+            "You are a helpful assistant who can select the most appropriate answer to each user question from a set of given multiple-choice options. "
+            "When responding, only provide the correct answer in the format: 'A. text', 'B. text', 'C. text', or 'D. text'. "
+            "Do not include any explanation, reasoning, or additional text."
         )
         labels = ["A", "B", "C", "D"]
         dataset = load_dataset("cais/mmlu", name="all")
@@ -232,6 +233,7 @@ class PrepareDataset:
         def preprocess_test():
             def _preprocess_example(example):
                 pass
+
             # dataset["test"] = dataset["test"].map(
             #     _preprocess_example, num_proc=gsi.info["n_cpus"]
             # )
@@ -241,7 +243,7 @@ class PrepareDataset:
                 input_str = f"Question: {example['question']}\n"
                 for label, choice in zip(labels, example["choices"]):
                     input_str += f"{label}. {choice}\n"
-                input_str += "Answer: "
+                input_str += "\nAnswer: "
 
                 output_str = f"{labels[example['answer']]}. {example['choices'][example['answer']]}"
 
@@ -260,7 +262,7 @@ class PrepareDataset:
             dataset["test"] = dataset["test"].map(
                 _preprocess_example, num_proc=gsi.info["n_cpus"]
             )
-        
+
         preprocess_train()
         preprocess_test()
         return dataset

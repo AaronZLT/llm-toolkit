@@ -9,6 +9,7 @@ from transformers import AutoTokenizer
 from .utils import (
     print_rank_0,
     safe_dict2file,
+    safe_list2file,
     get_rank,
     create_timestamp,
     require_lib,
@@ -172,13 +173,21 @@ class GSM8KEvaluationStrategy(EvaluationStrategy):
                 print(f"'{result}' is invalid thus cannot be transformed into numbers")
                 return 0
 
+
 class MMLUEvaluationStrategy(EvaluationStrategy):
     def is_correct(self, golden: str, predicate: str) -> bool:
-        golden_choice = golden.strip()[0]
-        predicate_choice = predicate.strip()[0]
-        if golden_choice not in ["A", "B", "C", "D"]:
-            raise ValueError(f"The first letter of label '{golden}' not in A, B, C, D. Aborting.")
-        return golden_choice == predicate_choice
+        golden_choice = golden.strip()
+        predicate_choice = predicate.strip()
+        if len(predicate_choice) != 0 and len(golden_choice) != 0:
+            golden_choice = golden_choice[0].upper()
+            predicate_choice = predicate_choice[0].upper()
+            if golden_choice not in ["A", "B", "C", "D"]:
+                raise ValueError(
+                    f"The first letter of label '{golden}' not in A, B, C, D. Aborting."
+                )
+            return golden_choice == predicate_choice
+        else:
+            return False
 
 
 class Evaluator:
@@ -237,5 +246,5 @@ def infly_evaluate(
             inspection.append(
                 {"prompt": prompt, "golden": golden, "predicate": response}
             )
-
+    safe_list2file(inspection, f"eval_{create_timestamp()}")
     return evaluator.evaluate(inspection)
