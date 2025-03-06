@@ -246,5 +246,5 @@ def infly_evaluate(
             inspection.append(
                 {"prompt": prompt, "golden": golden, "predicate": response}
             )
-    safe_list2file(inspection, f"eval_{create_timestamp()}")
+    safe_list2file(inspection, f"eval_{create_timestamp()}.json")
     return evaluator.evaluate(inspection)
