@@ -130,32 +130,42 @@ def prune_magnitude(
     prune_m=0,
     offload=True,
     sparse_preserve_accuracy=False,
+    prune_largest=False,
 ) -> List:
+    if prune_largest and not sparse_preserve_accuracy:
+        print_rank_0(
+            "Warning: prune_largest is True, but sparse_preserve_accuracy is False. This may cause accuracy drop."
+        )
     def _get_mask_prune_magnitude(
         W,
         sparsity_ratio: float,
         prune_n: int,
         prune_m: int,
+        largest: bool,
     ) -> torch.tensor:
-        # W = module.weight.data
-        # W_cpu = W.detach().cpu().clone()
+        """
+        get mask for pruning based on magnitude.
+        largest: if True, prune the largest weights, otherwise prune the smallest weights.
+        """
         W_metric = torch.abs(W)
         if prune_n != 0:
-            W_mask = torch.zeros_like(W) == 1
+            W_mask = torch.zeros_like(W, dtype=torch.bool)
             for ii in range(W_metric.shape[1]):
                 if ii % prune_m == 0:
                     tmp = W_metric[:, ii : (ii + prune_m)].float()
-                    W_mask.scatter_(
-                        1,
-                        ii + torch.topk(tmp, prune_n, dim=1, largest=False)[1],
-                        True,
-                    )
+                    idx_to_keep = torch.topk(tmp, prune_n, dim=1, largest=largest)[1]
+                    W_mask.scatter_(1, ii + idx_to_keep, True)
         else:
-            thresh = torch.sort(W_metric.flatten())[0][
-                int(W.numel() * sparsity_ratio)
-            ].cpu()
-            W_mask = W_metric <= thresh
-
+            if largest:
+                thresh = torch.sort(W_metric.flatten())[0][
+                    int(W.numel() * sparsity_ratio)
+                ].cpu()
+                W_mask = W_metric >= thresh
+            else:
+                thresh = torch.sort(W_metric.flatten(), descending=True)[0][
+                    int(W.numel() * sparsity_ratio)
+                ].cpu()
+                W_mask = W_metric <= thresh
         if offload:
             return W_mask.cpu()
         else:
@@ -201,7 +211,11 @@ def prune_magnitude(
                     named_mask.update(
                         {
                             base_layer_name: _get_mask_prune_magnitude(
-                                target_layer_data, sparsity_ratio, prune_n, prune_m
+                                target_layer_data,
+                                sparsity_ratio,
+                                prune_n,
+                                prune_m,
+                                prune_largest,
                             )
                         }
                     )
@@ -254,6 +268,7 @@ def prune_magnitude(
                                 sparsity_ratio,
                                 prune_n,
                                 prune_m,
+                                prune_largest,
                             )
                         }
                     )
@@ -278,7 +293,7 @@ def prune_magnitude(
                                 tmp_W,
                                 m.lora_A.default.weight.data,
                                 m.lora_B.default.weight.data,
-                                lora_scaling
+                                lora_scaling,
                             )
                             # check whether tmp_W.to("cpu")
                             del tmp_W
@@ -295,7 +310,11 @@ def prune_magnitude(
                     named_mask.update(
                         {
                             n: _get_mask_prune_magnitude(
-                                m.weight.data, sparsity_ratio, prune_n, prune_m
+                                m.weight.data,
+                                sparsity_ratio,
+                                prune_n,
+                                prune_m,
+                                prune_largest,
                             )
                         }
                     )
