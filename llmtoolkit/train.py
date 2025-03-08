@@ -99,6 +99,7 @@ def train(
                     sparse_preserve_accuracy = training_args.sparse_preserve_accuracy,
                     sparse_warmup_ratio=training_args.sparse_warmup_ratio,
                     sparse_warmup_steps=training_args.sparse_warmup_steps,
+                    sparse_prune_largest=training_args.sparse_prune_largest,
                     output_dir=training_args.output_dir,
                 )
             )

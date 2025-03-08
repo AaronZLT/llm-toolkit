@@ -69,10 +69,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Use flash attention? default = False"},
     )
-    quant: bool = field(
-        default=False,
+    quant: str = field(
+        default=None,
         metadata={
-            "help": "Quantize base model into quant_type data format. Default False"
+            "help": "Quantize base model. Default is None. Choose from [bnb, hqq (hqq is not supported yet)]."
         },
     )
     double_quant: bool = field(
@@ -320,6 +320,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     sparse_preserve_accuracy: bool = field(
         default=False,
         metadata={"help": "Merge sparse W into A and B to preserve accuracy. Default is False."},
+    )
+    sparse_prune_largest: bool = field(
+        default=False,
+        metadata={"help": "If True, prune the largest weights, otherwise prune the smallest weights. Default is False."},
     )
     unify_save: bool = field(
         default=False,

@@ -266,6 +266,7 @@ class DynamicSparseCallback(SparseCallbackBase):
         model,
         sparsity_ratio: float = 0.5,
         sparse_preserve_accuracy: bool = False,
+        sparse_prune_largest: bool = False,
         sparse_warmup_ratio: float = 0.5,
         sparse_warmup_steps: int = 2,
         output_dir: str = "",
@@ -273,6 +274,7 @@ class DynamicSparseCallback(SparseCallbackBase):
         super().__init__(model, sparsity_ratio, sparse_preserve_accuracy, output_dir)
         self.sparse_warmup_ratio = sparse_warmup_ratio
         self.sparse_warmup_steps = sparse_warmup_steps
+        self.sparse_prune_largest = sparse_prune_largest
         self.sparse_schedule = {}
         self.sparse_config.update({"sparse_type": "dynamic_sparse"})
 
@@ -297,6 +299,7 @@ class DynamicSparseCallback(SparseCallbackBase):
                 model=self.model,
                 sparsity_ratio=self.sparse_schedule[step],
                 sparse_preserve_accuracy=self.sparse_preserve_accuracy,
+                sparse_prune_largest=self.sparse_prune_largest,
             )
             self.sparse_config.update({"sparse_schedule": self.sparse_schedule})
             self.sparse_config.update(

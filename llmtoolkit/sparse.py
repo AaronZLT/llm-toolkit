@@ -130,9 +130,9 @@ def prune_magnitude(
     prune_m=0,
     offload=True,
     sparse_preserve_accuracy=False,
-    prune_largest=False,
+    sparse_prune_largest=False,
 ) -> List:
-    if prune_largest and not sparse_preserve_accuracy:
+    if sparse_prune_largest and not sparse_preserve_accuracy:
         print_rank_0(
             "Warning: prune_largest is True, but sparse_preserve_accuracy is False. This may cause accuracy drop."
         )
@@ -215,7 +215,7 @@ def prune_magnitude(
                                 sparsity_ratio,
                                 prune_n,
                                 prune_m,
-                                prune_largest,
+                                sparse_prune_largest,
                             )
                         }
                     )
@@ -268,7 +268,7 @@ def prune_magnitude(
                                 sparsity_ratio,
                                 prune_n,
                                 prune_m,
-                                prune_largest,
+                                sparse_prune_largest,
                             )
                         }
                     )
@@ -314,7 +314,7 @@ def prune_magnitude(
                                 sparsity_ratio,
                                 prune_n,
                                 prune_m,
-                                prune_largest,
+                                sparse_prune_largest,
                             )
                         }
                     )

@@ -1,6 +1,6 @@
 import os
 from os.path import exists, join, isdir
-from typing import Dict
+from typing import Dict, Union
 
 import torch
 import transformers
@@ -60,8 +60,16 @@ def find_all_linear_names(model, bits):
 
 
 @timeit
-def peft_model(model, args: ModelArguments):
-    if args.peft in ["lora", "lorafa", "vera", "dora"]:
+def peft_model(
+    model: transformers.PreTrainedModel,
+    model_bits: int,
+    peft_method: str,
+    lora_modules: Union[str, list],
+    lora_rank: int,
+    lora_scale: float,
+    init_lora_weights: str,
+):
+    if peft_method in ["lora", "lorafa", "vera", "dora"]:
         attention_modules = [
             "query",
             "q_proj",
@@ -73,22 +81,22 @@ def peft_model(model, args: ModelArguments):
             "o_proj",
         ]
 
-        modules = find_all_linear_names(model, args.bits)
+        modules = find_all_linear_names(model, model_bits)
 
-        if args.lora_modules == "all":
+        if lora_modules == "all":
             pass
-        elif args.lora_modules == "attention":
+        elif lora_modules == "attention":
             modules = [
                 s for s in modules if any(module in s for module in attention_modules)
             ]
-        elif args.lora_modules == "mlp":
+        elif lora_modules == "mlp":
             modules = [
                 s
                 for s in modules
                 if all(module not in s for module in attention_modules)
             ]
         else:
-            target_modules = args.lora_modules.split(",")
+            target_modules = lora_modules.split(",")
             for m in target_modules:
                 if m not in modules:
                     raise ValueError(
@@ -97,78 +105,74 @@ def peft_model(model, args: ModelArguments):
             modules = target_modules
         print_rank_0(f"adding LoRA modules to {modules}")
 
-        if args.peft == "lora":
+        if peft_method == "lora":
             config = LoraConfig(
-                r=args.lora_rank,
-                lora_alpha=int(args.lora_scale * args.lora_rank),
+                r=lora_rank,
+                lora_alpha=int(lora_scale * lora_rank),
                 target_modules=modules,
-                lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
-                init_lora_weights=args.init_lora_weights
-                if args.init_lora_weights is not None
+                init_lora_weights=init_lora_weights
+                if init_lora_weights is not None
                 else True,
             )
             _peft_model = get_peft_model(model, config)
-        elif args.peft == "lorafa":
+        elif peft_method == "lorafa":
             config = LoraConfig(
-                r=args.lora_rank,
-                lora_alpha=int(args.lora_scale * args.lora_rank),
+                r=lora_rank,
+                lora_alpha=int(lora_scale * lora_rank),
                 target_modules=modules,
-                lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
-                init_lora_weights=args.init_lora_weights
-                if args.init_lora_weights is not None
+                init_lora_weights=init_lora_weights
+                if init_lora_weights is not None
                 else True,
             )
             _peft_model = get_peft_model(model, config)
             for name, param in _peft_model.named_parameters():
                 if "lora_A" in name:
                     param.requires_grad_(False)
-        elif args.peft == "dora":
+        elif peft_method == "dora":
             config = LoraConfig(
-                r=args.lora_rank,
+                r=lora_rank,
                 use_dora=True,
-                lora_alpha=int(args.lora_scale * args.lora_rank),
+                lora_alpha=int(lora_scale * lora_rank),
                 target_modules=modules,
-                lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
             )
             _peft_model = get_peft_model(model, config)
-        elif args.peft == "adalora":
+        elif peft_method == "adalora":
             config = AdaLoraConfig(
-                r=args.lora_rank,
-                lora_alpha=int(args.lora_scale * args.lora_rank),
+                r=lora_rank,
+                lora_alpha=int(lora_scale * lora_rank),
                 target_modules=modules,
-                lora_dropout=args.lora_dropout,
                 bias="none",
                 task_type="CAUSAL_LM",
             )
             _peft_model = get_peft_model(model, config)
-        elif args.peft == "loraga":
+        elif peft_method == "loraga":
             # please preprocess the model, no operations here
             pass
-        elif args.peft == "vera":
-            config = VeraConfig(r=args.lora_rank, target_modules=modules)
+        elif peft_method == "vera":
+            config = VeraConfig(r=lora_rank, target_modules=modules)
             _peft_model = get_peft_model(model, config)
-    elif args.peft == "prefix":
+    elif peft_method == "prefix":
         config = PrefixTuningConfig(
             num_virtual_tokens=30,
             task_type="CAUSAL_LM",
         )
         _peft_model = get_peft_model(model, config)
-    elif args.peft == "prompt":
+    elif peft_method == "prompt":
         config = PromptTuningConfig(
             task_type="CAUSAL_LM",
             prompt_tuning_init="TEXT",
             prompt_tuning_init_text="Below is an instruction that describes a task. Write a response.",
             num_virtual_tokens=40,
-            tokenizer_name_or_path=args.model_name_or_path,
+            tokenizer_name_or_path=model.config._name_or_path,
         )
         _peft_model = get_peft_model(model, config)
-    elif args.peft == "embedding":
+    elif peft_method == "embedding":
         _peft_model = model
         for name, param in _peft_model.named_parameters():
             if "embed" not in name:
@@ -179,8 +183,28 @@ def peft_model(model, args: ModelArguments):
     return _peft_model
 
 
-def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArguments):
-    if model_args.flash_attn is True:
+"""
+refactor the function get_accelerate_model, that list all args usd in the function instead of using the ModelArguments and TrainingArguments classes
+"""
+
+
+def get_accelerate_model(
+    model_name_or_path: str,
+    model_bits: int,
+    quant: str,
+    quant_type: str,
+    peft: str,
+    lora_modules: str,
+    lora_rank: int,
+    lora_scale: float,
+    init_lora_weights: str,
+    flash_attn: bool,
+    compute_dtype: torch.dtype,
+    parallelism: str,
+    gradient_checkpointing: bool,
+    deepspeed: str,
+):
+    if flash_attn is True:
         require_lib("flash_attn")
         attn_implementation = "flash_attention_2"
     else:
@@ -191,42 +215,47 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     if is_ipex_available() and torch.xpu.is_available():
         n_gpus = torch.xpu.device_count()
 
-    if not model_args.quant:
-        assert model_args.bits in [16, 32]
+    if not quant:
+        assert model_bits in [16, 32]
     else:
-        assert model_args.bits in [8, 4, 2, 1]
+        assert model_bits in [8, 4, 2, 1]
 
-    compute_dtype = (
-        torch.float16
-        if training_args.fp16
-        else (torch.bfloat16 if training_args.bf16 else torch.float32)
-    )
     pretrained_model_kwargs = {
-        "pretrained_model_name_or_path": model_args.model_name_or_path,
+        "pretrained_model_name_or_path": model_name_or_path,
         "attn_implementation": attn_implementation,
         "torch_dtype": compute_dtype,
     }
-    if training_args.parallelism == "pp":
+    if parallelism == "pp":
         pretrained_model_kwargs.update({"device_map": "auto"})
-    if model_args.quant:
+
+    if quant == "bnb":
         pretrained_model_kwargs.update(
             {
                 "quantization_config": BitsAndBytesConfig(
-                    load_in_4bit=model_args.bits == 4,
-                    load_in_8bit=model_args.bits == 8,
+                    load_in_4bit=model_bits == 4,
+                    load_in_8bit=model_bits == 8,
                     llm_int8_threshold=6.0,
                     llm_int8_has_fp16_weight=False,
                     bnb_4bit_compute_dtype=compute_dtype,
-                    bnb_4bit_use_double_quant=model_args.double_quant,
-                    bnb_4bit_quant_type=model_args.quant_type,
-                    bnb_4bit_quant_storage=model_args.quant_storage,
+                    bnb_4bit_use_double_quant=False,
+                    bnb_4bit_quant_type=quant_type,
+                    bnb_4bit_quant_storage="uint8",
                 )
             }
         )
-    print_rank_0(f"Loading base model from {model_args.model_name_or_path}.")
+    elif quant == "hqq":
+        raise NotImplementedError("HQQ is not supported yet")
+    else:
+        pretrained_model_kwargs.update(
+            {
+                "quantization_config": None,
+            }
+        )
+
+    print_rank_0(f"Loading base model from {model_name_or_path}.")
     model = AutoModelForCausalLM.from_pretrained(**pretrained_model_kwargs)
 
-    if compute_dtype == torch.float16 and model_args.bits == 4:
+    if compute_dtype == torch.float16 and model_bits == 4:
         if torch.cuda.is_bf16_supported():
             print_rank_0("=" * 80)
             print_rank_0(
@@ -240,17 +269,13 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
         compute_dtype = torch.bfloat16
         print_rank_0("Intel XPU does not support float16 yet, so switching to bfloat16")
 
-    if training_args.parallelism == "pp":
+    if parallelism == "pp":
         setattr(model, "model_parallel", True)
         setattr(model, "is_parallelizable", True)
 
-    model.config.torch_dtype = (
-        torch.float16
-        if training_args.fp16
-        else (torch.bfloat16 if training_args.bf16 else torch.float32)
-    )
+    model.config.torch_dtype = compute_dtype
 
-    tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
     tokenizer.padding_side = "left"
 
     # add special tokens
@@ -277,29 +302,43 @@ def get_accelerate_model(model_args: ModelArguments, training_args: TrainingArgu
     print_rank_0(f"bos_token: {tokenizer.bos_token}")
     print_rank_0(f"unk_token: {tokenizer.unk_token}")
 
-    if model_args.quant:
+    if quant:
         model = prepare_model_for_kbit_training(
-            model, use_gradient_checkpointing=training_args.gradient_checkpointing
+            model, use_gradient_checkpointing=gradient_checkpointing
         )
 
-    if model_args.peft:
-        model = peft_model(model, model_args)
+    if peft:
+        model = peft_model(
+            model,
+            model_bits,
+            peft,
+            lora_modules,
+            lora_rank,
+            lora_scale,
+            init_lora_weights,
+        )
 
-        if model_args.flash_attn or training_args.deepspeed is not None:
+        if flash_attn or deepspeed is not None:
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
                     module = module.to(
-                        torch.float16 if training_args.fp16 else torch.bfloat16
+                        torch.float16
+                        if compute_dtype == torch.float16
+                        else torch.bfloat16
                     )
                 if "norm" in name:
                     module = module.to(
-                        torch.float16 if training_args.fp16 else torch.bfloat16
+                        torch.float16
+                        if compute_dtype == torch.float16
+                        else torch.bfloat16
                     )
                 if "lm_head" in name or "embed_tokens" in name:
                     if hasattr(module, "weight"):
                         if module.weight.dtype == torch.float32:
                             module = module.to(
-                                torch.float16 if training_args.fp16 else torch.bfloat16
+                                torch.float16
+                                if compute_dtype == torch.float16
+                                else torch.bfloat16
                             )
 
     if hasattr(model, "enable_input_require_grads"):
