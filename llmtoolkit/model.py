@@ -1,6 +1,6 @@
 import os
 from os.path import exists, join, isdir
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 
 import torch
 import transformers
@@ -25,6 +25,10 @@ from peft.tuners.lora import LoraLayer
 from .arguments import (
     ModelArguments,
     TrainingArguments,
+)
+from .config import (
+    PEFTConfig,
+    QuantConfig,
 )
 from .utils import (
     print_rank_0,
@@ -64,7 +68,7 @@ def peft_model(
     model: transformers.PreTrainedModel,
     model_bits: int,
     peft_method: str,
-    lora_modules: Union[str, list],
+    lora_modules: str,
     lora_rank: int,
     lora_scale: float,
     init_lora_weights: str,
@@ -188,23 +192,188 @@ refactor the function get_accelerate_model, that list all args usd in the functi
 """
 
 
+# def get_accelerate_model(
+#     model_name_or_path: str,
+#     model_bits: int,
+#     quant: str,
+#     quant_type: str,
+#     peft: str,
+#     lora_modules: str,
+#     lora_rank: int,
+#     lora_scale: float,
+#     init_lora_weights: str,
+#     flash_attn: bool,
+#     compute_dtype: torch.dtype,
+#     parallelism: str,
+#     gradient_checkpointing: bool,
+#     deepspeed: str,
+# ):
+#     if flash_attn is True:
+#         require_lib("flash_attn")
+#         attn_implementation = "flash_attention_2"
+#     else:
+#         attn_implementation = "eager"
+
+#     if torch.cuda.is_available():
+#         n_gpus = torch.cuda.device_count()
+#     if is_ipex_available() and torch.xpu.is_available():
+#         n_gpus = torch.xpu.device_count()
+
+#     if not quant:
+#         assert model_bits in [16, 32]
+#     else:
+#         assert model_bits in [8, 4, 2, 1]
+
+#     pretrained_model_kwargs = {
+#         "pretrained_model_name_or_path": model_name_or_path,
+#         "attn_implementation": attn_implementation,
+#         "torch_dtype": compute_dtype,
+#     }
+#     if parallelism == "pp":
+#         pretrained_model_kwargs.update({"device_map": "auto"})
+
+#     if quant == "bnb":
+#         pretrained_model_kwargs.update(
+#             {
+#                 "quantization_config": BitsAndBytesConfig(
+#                     load_in_4bit=model_bits == 4,
+#                     load_in_8bit=model_bits == 8,
+#                     llm_int8_threshold=6.0,
+#                     llm_int8_has_fp16_weight=False,
+#                     bnb_4bit_compute_dtype=compute_dtype,
+#                     bnb_4bit_use_double_quant=False,
+#                     bnb_4bit_quant_type=quant_type,
+#                     bnb_4bit_quant_storage="uint8",
+#                 )
+#             }
+#         )
+#     elif quant == "hqq":
+#         raise NotImplementedError("HQQ is not supported yet")
+#     else:
+#         pretrained_model_kwargs.update(
+#             {
+#                 "quantization_config": None,
+#             }
+#         )
+
+#     print_rank_0(f"Loading base model from {model_name_or_path}.")
+#     model = AutoModelForCausalLM.from_pretrained(**pretrained_model_kwargs)
+
+#     if compute_dtype == torch.float16 and model_bits == 4:
+#         if torch.cuda.is_bf16_supported():
+#             print_rank_0("=" * 80)
+#             print_rank_0(
+#                 "Your GPU supports bfloat16, you can accelerate training with the argument --bf16"
+#             )
+#             print_rank_0("=" * 80)
+
+#     if compute_dtype == torch.float16 and (
+#         is_ipex_available() and torch.xpu.is_available()
+#     ):
+#         compute_dtype = torch.bfloat16
+#         print_rank_0("Intel XPU does not support float16 yet, so switching to bfloat16")
+
+#     if parallelism == "pp":
+#         setattr(model, "model_parallel", True)
+#         setattr(model, "is_parallelizable", True)
+
+#     model.config.torch_dtype = compute_dtype
+
+#     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+#     tokenizer.padding_side = "left"
+
+#     # add special tokens
+#     # 1. add pad_token if pad_token is None, as "<|reserved_special_token_100|>", not as any in-use tokens. The reason to use "<|reserved_special_token_100|>" rather than "<|pad|>" is that we do not want to introduce extra tokens when finetune LLama3 models
+#     # 2. add unk_token if unk_token is None (even though for most models they do have unk_token), as "<|reserved_special_token_101|>"
+#     # 3. final check pad_token, eos_token, bos_token, unk_token
+#     # 4. the best case is when the tokenizer and model support these reserved tokens, since then we do not need to resize the embedding
+#     special_tokens_dict = dict()
+#     if tokenizer.pad_token is None:
+#         special_tokens_dict["pad_token"] = "<|reserved_special_token_100|>"
+#     if tokenizer.eos_token is None:
+#         special_tokens_dict["eos_token"] = tokenizer.convert_ids_to_tokens(
+#             model.config.eos_token_id
+#         )
+#     if tokenizer.bos_token is None:
+#         special_tokens_dict["bos_token"] = tokenizer.convert_ids_to_tokens(
+#             model.config.bos_token_id
+#         )
+#     if tokenizer.unk_token is None:
+#         special_tokens_dict["unk_token"] = "<|reserved_special_token_101|>"
+#     smart_tokenizer_and_embedding_resize(special_tokens_dict, tokenizer, model)
+#     print_rank_0(f"pad_token: {tokenizer.pad_token}")
+#     print_rank_0(f"eos_token: {tokenizer.eos_token}")
+#     print_rank_0(f"bos_token: {tokenizer.bos_token}")
+#     print_rank_0(f"unk_token: {tokenizer.unk_token}")
+
+#     if quant:
+#         model = prepare_model_for_kbit_training(
+#             model, use_gradient_checkpointing=gradient_checkpointing
+#         )
+
+#     if peft:
+#         model = peft_model(
+#             model,
+#             model_bits,
+#             peft,
+#             lora_modules,
+#             lora_rank,
+#             lora_scale,
+#             init_lora_weights,
+#         )
+
+#         if flash_attn or deepspeed is not None:
+#             for name, module in model.named_modules():
+#                 if isinstance(module, LoraLayer):
+#                     module = module.to(
+#                         torch.float16
+#                         if compute_dtype == torch.float16
+#                         else torch.bfloat16
+#                     )
+#                 if "norm" in name:
+#                     module = module.to(
+#                         torch.float16
+#                         if compute_dtype == torch.float16
+#                         else torch.bfloat16
+#                     )
+#                 if "lm_head" in name or "embed_tokens" in name:
+#                     if hasattr(module, "weight"):
+#                         if module.weight.dtype == torch.float32:
+#                             module = module.to(
+#                                 torch.float16
+#                                 if compute_dtype == torch.float16
+#                                 else torch.bfloat16
+#                             )
+
+#     if hasattr(model, "enable_input_require_grads"):
+#         model.enable_input_require_grads()
+#     else:
+
+#         def make_inputs_require_grad(module, input, output):
+#             output.requires_grad_(True)
+
+#         model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+
+#     return model, tokenizer
+
+
+
 def get_accelerate_model(
     model_name_or_path: str,
     model_bits: int,
-    quant: str,
-    quant_type: str,
-    peft: str,
-    lora_modules: str,
-    lora_rank: int,
-    lora_scale: float,
-    init_lora_weights: str,
-    flash_attn: bool,
-    compute_dtype: torch.dtype,
-    parallelism: str,
-    gradient_checkpointing: bool,
-    deepspeed: str,
+    quant_config: Optional[QuantConfig] = None,
+    peft_config: Optional[PEFTConfig] = None,
+    
+    quant: Optional[str] = None,
+    peft: Optional[str] = None,
+    flash_attn: bool = True,
+    compute_dtype: torch.dtype = torch.bfloat16,
+    parallelism: str = "none",
+    gradient_checkpointing: bool = False,
+    deepspeed: Optional[str] = None,
+    **kwargs
 ):
-    if flash_attn is True:
+    if flash_attn:
         require_lib("flash_attn")
         attn_implementation = "flash_attention_2"
     else:
@@ -215,7 +384,7 @@ def get_accelerate_model(
     if is_ipex_available() and torch.xpu.is_available():
         n_gpus = torch.xpu.device_count()
 
-    if not quant:
+    if not quant_config:
         assert model_bits in [16, 32]
     else:
         assert model_bits in [8, 4, 2, 1]
@@ -228,23 +397,24 @@ def get_accelerate_model(
     if parallelism == "pp":
         pretrained_model_kwargs.update({"device_map": "auto"})
 
-    if quant == "bnb":
-        pretrained_model_kwargs.update(
-            {
-                "quantization_config": BitsAndBytesConfig(
-                    load_in_4bit=model_bits == 4,
-                    load_in_8bit=model_bits == 8,
-                    llm_int8_threshold=6.0,
-                    llm_int8_has_fp16_weight=False,
-                    bnb_4bit_compute_dtype=compute_dtype,
-                    bnb_4bit_use_double_quant=False,
-                    bnb_4bit_quant_type=quant_type,
-                    bnb_4bit_quant_storage="uint8",
-                )
-            }
-        )
-    elif quant == "hqq":
-        raise NotImplementedError("HQQ is not supported yet")
+    if quant_config:
+        if quant_config.quant_method == "bnb":
+            pretrained_model_kwargs.update(
+                {
+                    "quantization_config": BitsAndBytesConfig(
+                        load_in_4bit=model_bits == 4,
+                        load_in_8bit=model_bits == 8,
+                        llm_int8_threshold=6.0,
+                        llm_int8_has_fp16_weight=False,
+                        bnb_4bit_compute_dtype=compute_dtype,
+                        bnb_4bit_use_double_quant=False,
+                        bnb_4bit_quant_type=quant_config.bnb_quant_type,
+                        bnb_4bit_quant_storage="uint8",
+                    )
+                }
+            )
+        if quant_config.quant_method == "hqq":
+            raise NotImplementedError("HQQ is not supported yet")
     else:
         pretrained_model_kwargs.update(
             {
@@ -257,11 +427,9 @@ def get_accelerate_model(
 
     if compute_dtype == torch.float16 and model_bits == 4:
         if torch.cuda.is_bf16_supported():
-            print_rank_0("=" * 80)
             print_rank_0(
                 "Your GPU supports bfloat16, you can accelerate training with the argument --bf16"
             )
-            print_rank_0("=" * 80)
 
     if compute_dtype == torch.float16 and (
         is_ipex_available() and torch.xpu.is_available()
@@ -278,11 +446,6 @@ def get_accelerate_model(
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
     tokenizer.padding_side = "left"
 
-    # add special tokens
-    # 1. add pad_token if pad_token is None, as "<|reserved_special_token_100|>", not as any in-use tokens. The reason to use "<|reserved_special_token_100|>" rather than "<|pad|>" is that we do not want to introduce extra tokens when finetune LLama3 models
-    # 2. add unk_token if unk_token is None (even though for most models they do have unk_token), as "<|reserved_special_token_101|>"
-    # 3. final check pad_token, eos_token, bos_token, unk_token
-    # 4. the best case is when the tokenizer and model support these reserved tokens, since then we do not need to resize the embedding
     special_tokens_dict = dict()
     if tokenizer.pad_token is None:
         special_tokens_dict["pad_token"] = "<|reserved_special_token_100|>"
@@ -312,33 +475,27 @@ def get_accelerate_model(
             model,
             model_bits,
             peft,
-            lora_modules,
-            lora_rank,
-            lora_scale,
-            init_lora_weights,
+            kwargs.get("lora_modules"),
+            kwargs.get("lora_rank"),
+            kwargs.get("lora_scale"),
+            kwargs.get("init_lora_weights"),
         )
 
         if flash_attn or deepspeed is not None:
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
                     module = module.to(
-                        torch.float16
-                        if compute_dtype == torch.float16
-                        else torch.bfloat16
+                        torch.float16 if compute_dtype == torch.float16 else torch.bfloat16
                     )
                 if "norm" in name:
                     module = module.to(
-                        torch.float16
-                        if compute_dtype == torch.float16
-                        else torch.bfloat16
+                        torch.float16 if compute_dtype == torch.float16 else torch.bfloat16
                     )
                 if "lm_head" in name or "embed_tokens" in name:
                     if hasattr(module, "weight"):
                         if module.weight.dtype == torch.float32:
                             module = module.to(
-                                torch.float16
-                                if compute_dtype == torch.float16
-                                else torch.bfloat16
+                                torch.float16 if compute_dtype == torch.float16 else torch.bfloat16
                             )
 
     if hasattr(model, "enable_input_require_grads"):
@@ -351,6 +508,8 @@ def get_accelerate_model(
         model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
     return model, tokenizer
+
+
 
 
 def print_trainable_parameters(model, debug=False):

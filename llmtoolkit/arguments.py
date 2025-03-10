@@ -75,22 +75,10 @@ class ModelArguments:
             "help": "Quantize base model. Default is None. Choose from [bnb, hqq (hqq is not supported yet)]."
         },
     )
-    double_quant: bool = field(
-        default=False,
-        metadata={
-            "help": "Compress the quantization statistics through double quantization."
-        },
-    )
     quant_type: str = field(
         default="nf4",
         metadata={
             "help": "Quantization data type to use. Should be one of `fp4` or `nf4`."
-        },
-    )
-    quant_storage: str = field(
-        default="uint8",
-        metadata={
-            "help": "Data type to store the quantization data. Should be one of ['float16', 'float32', 'int8', 'uint8', 'float64', 'bfloat16']. Default is 'uint8'."
         },
     )
     bits: int = field(
