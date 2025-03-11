@@ -223,7 +223,6 @@ class PrepareDataset:
         """
         system_message = (
             "You are a helpful assistant who can select the most appropriate answer to each user question from a set of given multiple-choice options. "
-            "The first five questions are samples, only the last one will be answered. "
             "When responding, only provide the correct answer in the format: 'A. text', 'B. text', 'C. text', or 'D. text'. "
             "Do not include any explanation, reasoning, or additional text."
         )
@@ -231,52 +230,41 @@ class PrepareDataset:
         dataset = load_dataset("cais/mmlu", name="all")
         dataset["train"] = dataset.pop("auxiliary_train")
 
-        def preprocess_test():
+        def cast_mmlu_example_to_QA(example):
+            # TODO
+            # assert question, choices and answer are all present in the example
+            # assert len(example["choices"]) == 4
+            input_str = f"Question: {example['question']}\n"
+            for label, choice in zip(labels, example["choices"]):
+                input_str += f"{label}. {choice}\n"
+            input_str += "\nAnswer: "
+            output_str = (
+                f"{labels[example['answer']]}. {example['choices'][example['answer']]}"
+            )
+            return input_str, output_str
+
+        def preprocess_test():            
             def _preprocess_example(example):
-                few_shot_examples = dataset["dev"].shuffle(seed=random.randint(0, 1000)).select(range(5))
-
-                few_shot_input = ""
-                # prefex = "This an example. Do not answer this question.\n"
-                prefex = ""
-                for few_shot_example in few_shot_examples:
-                    few_shot_input += prefex + f"Question: {few_shot_example['question']}\n"
-                    for label, choice in zip(labels, few_shot_example['choices']):
-                        few_shot_input += f"{label}. {choice}\n"
-                    few_shot_input += "\nAnswer: "
-                    few_shot_input += f"\n{labels[few_shot_example['answer']]}. {few_shot_example['choices'][few_shot_example['answer']]}\n\n"
-                
-                # prefex = "Only answer this question.\n"
-                current_input = prefex + f"Question: {example['question']}\n"
-                for label, choice in zip(labels, example['choices']):
-                    current_input += f"{label}. {choice}\n"
-                current_input += "\nAnswer: "
-
-                input_str = few_shot_input + current_input
-                output_str = f"{labels[example['answer']]}. {example['choices'][example['answer']]}"
-
                 chat = [
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": input_str},
                     {"role": "assistant", "content": output_str},
-                ]
-                _source, _target = apply_chat_template_to_train(chat, self.tokenizer)
+                ]                
+                subject = example["subject"]
+                for i in dataset["dev"].filter(lambda x: x["subject"] == subject):
+                    input_str, output_str = cast_mmlu_example_to_QA(example)
+                    chat.appen({"role": "user", "content": input_str})
+                    chat.appen({"role": "assistant", "content": output_str})
 
-                return {"input": _source, "output": _target}
-                # pass
-                
-            dataset["test"] = dataset["test"].map(
-                _preprocess_example, num_proc=gsi.info["n_cpus"]
-            )
+                pass
+
+            # dataset["test"] = dataset["test"].map(
+            #     _preprocess_example, num_proc=gsi.info["n_cpus"]
+            # )
 
         def preprocess_train():
             def _preprocess_example(example):
-                input_str = f"Question: {example['question']}\n"
-                for label, choice in zip(labels, example["choices"]):
-                    input_str += f"{label}. {choice}\n"
-                input_str += "\nAnswer: "
-
-                output_str = f"{labels[example['answer']]}. {example['choices'][example['answer']]}"
-
+                input_str, output_str = cast_mmlu_example_to_QA(example)
                 chat = [
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": input_str},
@@ -289,9 +277,9 @@ class PrepareDataset:
             dataset["train"] = dataset["train"].map(
                 _preprocess_example, num_proc=gsi.info["n_cpus"]
             )
-            # dataset["test"] = dataset["test"].map(
-            #     _preprocess_example, num_proc=gsi.info["n_cpus"]
-            # )
+            dataset["test"] = dataset["test"].map(
+                _preprocess_example, num_proc=gsi.info["n_cpus"]
+            )
 
         preprocess_train()
         preprocess_test()
