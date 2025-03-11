@@ -13,4 +13,5 @@ class PEFTConfig:
 @dataclass
 class QuantConfig:
     quant_method: str
+    model_bits: int
     bnb_quant_type: float

@@ -57,6 +57,10 @@ from .inference import (
     single_inference,
     vllm_inference,
 )
+from .config import (
+    QuantConfig,
+    PEFTConfig,
+)
 from .utils import (
     get_rank,
     get_world_size,
