@@ -243,24 +243,26 @@ class PrepareDataset:
             )
             return input_str, output_str
 
-        def preprocess_test():            
+        def preprocess_test():
             def _preprocess_example(example):
                 chat = [
                     {"role": "system", "content": system_message},
-                    {"role": "user", "content": input_str},
-                    {"role": "assistant", "content": output_str},
-                ]                
+                ]
                 subject = example["subject"]
                 for i in dataset["dev"].filter(lambda x: x["subject"] == subject):
-                    input_str, output_str = cast_mmlu_example_to_QA(example)
-                    chat.appen({"role": "user", "content": input_str})
-                    chat.appen({"role": "assistant", "content": output_str})
+                    input_str, output_str = cast_mmlu_example_to_QA(i)
+                    chat.append({"role": "user", "content": input_str})
+                    chat.append({"role": "assistant", "content": output_str})
+                    
+                input_str, output_str = cast_mmlu_example_to_QA(example)
+                chat.append({"role": "user", "content": input_str})
+                chat.append({"role": "assistant", "content": output_str})
+                _source, _target = apply_chat_template_to_train(chat, self.tokenizer)
+                return {"input": _source, "output": _target}
 
-                pass
-
-            # dataset["test"] = dataset["test"].map(
-            #     _preprocess_example, num_proc=gsi.info["n_cpus"]
-            # )
+            dataset["test"] = dataset["test"].map(
+                _preprocess_example, num_proc=gsi.info["n_cpus"]
+            )
 
         def preprocess_train():
             def _preprocess_example(example):
@@ -275,9 +277,6 @@ class PrepareDataset:
                 return {"input": _source, "output": _target}
 
             dataset["train"] = dataset["train"].map(
-                _preprocess_example, num_proc=gsi.info["n_cpus"]
-            )
-            dataset["test"] = dataset["test"].map(
                 _preprocess_example, num_proc=gsi.info["n_cpus"]
             )
 
@@ -570,6 +569,7 @@ def build_data_module(
         and len(train_dataset) > args.max_train_samples
     ):
         train_dataset = train_dataset.select(range(args.max_train_samples))
+    
     train_dataset = train_dataset.map(
         lambda x: {
             "input_length": len(tokenizer(x["input"])["input_ids"]),
@@ -588,24 +588,41 @@ def build_data_module(
         print_rank_0(
             f"WARNING: You choose not to pad all sequences to the max same length (max_input_token = source_max_len + target_max_len = {args.source_max_len + args.target_max_len}) since hard_padding is False. However, at least 1 sequence in the dataset has exceeded the max length ({longest_sequence_length}), which may ultimately cause OOM during the training. To avoid OOM, try few steps with --hard_padding True before training."
         )
-    input_length = train_dataset["input_length"]
-    output_length = train_dataset["output_length"]
-    length = train_dataset["length"]
+
     recmd_input_length = draw_number_line_with_highlight(
-        "input", input_length, args.source_max_len
+        "training dataset input length", train_dataset["input_length"], args.source_max_len
     )
     recmd_output_length = draw_number_line_with_highlight(
-        "output", output_length, args.target_max_len
+        "training dataset output length", train_dataset["output_length"], args.target_max_len
     )
     recmd_seq_length = draw_number_line_with_highlight(
-        "sequence", length, args.source_max_len + args.target_max_len
+        "training dataset sequence length", train_dataset["length"], args.source_max_len + args.target_max_len
     )
     print_rank_0(
-        f"To cover 90% of input, output and overall sequence length, you may consider setting source_max_len >= {recmd_input_length}, target_max_len >= {recmd_output_length}, and source_max_len + target_max_len >= {recmd_seq_length} respectively."
+        f"To cover 90% of input, output and overall sequence length in ***TRAINING***, you may consider setting source_max_len >= {recmd_input_length}, target_max_len >= {recmd_output_length}, and source_max_len + target_max_len >= {recmd_seq_length} respectively."
     )
 
     for index in random.sample(range(len(train_dataset)), 3):
         print_rank_0(f"Sample {index} of the training set:\n{train_dataset[index]}.")
+
+    eval_dataset = eval_dataset.map(
+        lambda x: {
+            "input_length": len(tokenizer(x["input"])["input_ids"]),
+            "output_length": len(tokenizer(x["output"])["input_ids"]),
+            "length": len(tokenizer(x["input"])["input_ids"])
+            + len(tokenizer(x["output"])["input_ids"]),
+        },
+        num_proc=gsi.info["n_cpus"],
+    )
+    recmd_seq_length = draw_number_line_with_highlight(
+        "evaluating dataset sequence length", eval_dataset["length"], args.source_max_len + args.target_max_len
+    )
+    print_rank_0(
+        f"To cover 90% of overall sequence length in ***EVALUAtING***, you may consider setting source_max_len + target_max_len >= {recmd_seq_length}."
+    )
+    
+    for index in random.sample(range(len(eval_dataset)), 3):
+        print_rank_0(f"Sample {index} of the evaluating set:\n{eval_dataset[index]}.")
 
     data_collator = DataCollatorForCausalLM(
         tokenizer=tokenizer,
