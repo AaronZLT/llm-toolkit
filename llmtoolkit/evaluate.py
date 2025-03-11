@@ -232,9 +232,14 @@ def infly_evaluate(
     eval_dataset = build_data_module(tokenizer, task)["eval_dataset"]
     prompts = list(eval_dataset["input"])
     prompt_to_golden = {item["input"]: item["output"] for item in eval_dataset}
+    
+    max_tokens = {
+        "mmlu": 2048,
+        "gsm8k": 1024,
+    }
 
     results = vllm_inference(
-        prompts, model_name_or_path, peft_name_or_path, load_in_4bit=load_in_4bit
+        prompts, model_name_or_path, peft_name_or_path, load_in_4bit=load_in_4bit, max_tokens=max_tokens.get(task, 1024)
     )
 
     inspection = []

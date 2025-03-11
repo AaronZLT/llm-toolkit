@@ -53,8 +53,7 @@ def vllm_inference(
     model_name_or_path: str,
     peft_name_or_path: str = None,
     max_lora_rank: int = 128,
-    source_max_len: int = 512,
-    target_max_len: int = 512,
+    max_tokens: int = 1024,
     load_in_4bit: bool = False,
 ) -> list:
     require_lib("vllm")
@@ -62,7 +61,6 @@ def vllm_inference(
     from vllm.lora.request import LoRARequest
     import torch
 
-    max_tokens = source_max_len + target_max_len
     sampling_params = SamplingParams(temperature=0.0, top_p=0.1, max_tokens=max_tokens)
 
     if gsi.info["n_gpus"] >= 2:
