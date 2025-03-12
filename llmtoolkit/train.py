@@ -59,6 +59,7 @@ def train(
         model, training_args.debug_mode
     )
 
+    # TODO: rename training_args.adamw
     if training_args.adamw and isinstance(model, PeftModel):
         trainer = Seq2SeqTrainer_optim(
             lora_scale=model.peft_config["default"].lora_alpha
@@ -96,19 +97,10 @@ def train(
                 DynamicSparseCallback(
                     model=model,
                     sparsity_ratio=training_args.sparsity_ratio,
-                    sparse_preserve_accuracy = training_args.sparse_preserve_accuracy,
+                    sparse_preserve_accuracy=training_args.sparse_preserve_accuracy,
                     sparse_warmup_ratio=training_args.sparse_warmup_ratio,
                     sparse_warmup_steps=training_args.sparse_warmup_steps,
                     sparse_prune_largest=training_args.sparse_prune_largest,
-                    output_dir=training_args.output_dir,
-                )
-            )
-        elif training_args.sparse_type == "static_sparse":
-            trainer.add_callback(
-                StaticSparseCallback(
-                    model=model,
-                    sparsity_ratio=training_args.sparsity_ratio,
-                    sparse_preserve_accuracy = training_args.sparse_preserve_accuracy,
                     output_dir=training_args.output_dir,
                 )
             )
