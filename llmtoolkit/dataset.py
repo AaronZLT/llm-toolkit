@@ -253,7 +253,7 @@ class PrepareDataset:
                     input_str, output_str = cast_mmlu_example_to_QA(i)
                     chat.append({"role": "user", "content": input_str})
                     chat.append({"role": "assistant", "content": output_str})
-                    
+
                 input_str, output_str = cast_mmlu_example_to_QA(example)
                 chat.append({"role": "user", "content": input_str})
                 chat.append({"role": "assistant", "content": output_str})
@@ -569,7 +569,7 @@ def build_data_module(
         and len(train_dataset) > args.max_train_samples
     ):
         train_dataset = train_dataset.select(range(args.max_train_samples))
-    
+
     train_dataset = train_dataset.map(
         lambda x: {
             "input_length": len(tokenizer(x["input"])["input_ids"]),
@@ -590,13 +590,19 @@ def build_data_module(
         )
 
     recmd_input_length = draw_number_line_with_highlight(
-        "training dataset input length", train_dataset["input_length"], args.source_max_len
+        "training dataset input length",
+        train_dataset["input_length"],
+        args.source_max_len,
     )
     recmd_output_length = draw_number_line_with_highlight(
-        "training dataset output length", train_dataset["output_length"], args.target_max_len
+        "training dataset output length",
+        train_dataset["output_length"],
+        args.target_max_len,
     )
     recmd_seq_length = draw_number_line_with_highlight(
-        "training dataset sequence length", train_dataset["length"], args.source_max_len + args.target_max_len
+        "training dataset sequence length",
+        train_dataset["length"],
+        args.source_max_len + args.target_max_len,
     )
     print_rank_0(
         f"To cover 90% of input, output and overall sequence length in ***TRAINING***, you may consider setting source_max_len >= {recmd_input_length}, target_max_len >= {recmd_output_length}, and source_max_len + target_max_len >= {recmd_seq_length} respectively."
@@ -615,12 +621,14 @@ def build_data_module(
         num_proc=gsi.info["n_cpus"],
     )
     recmd_seq_length = draw_number_line_with_highlight(
-        "evaluating dataset sequence length", eval_dataset["length"], args.source_max_len + args.target_max_len
+        "evaluating dataset sequence length",
+        eval_dataset["length"],
+        args.source_max_len + args.target_max_len,
     )
     print_rank_0(
         f"To cover 90% of overall sequence length in ***EVALUAtING***, you may consider setting source_max_len + target_max_len >= {recmd_seq_length}."
     )
-    
+
     for index in random.sample(range(len(eval_dataset)), 3):
         print_rank_0(f"Sample {index} of the evaluating set:\n{eval_dataset[index]}.")
 
