@@ -36,6 +36,7 @@ from .model import (
 from .sparse import (
     prune_magnitude,
     apply_sparse,
+    check_sparsity,
 )
 from .load_and_save import (
     load,

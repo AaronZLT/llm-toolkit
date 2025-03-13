@@ -36,9 +36,10 @@ def load(
     from the given `base_model_name_or_path`. It also supports loading a
     Parameter-Efficient Fine-Tuning (PEFT) adapter from `peft_model_name_or_path`,
     resizing the token embeddings if necessary. Additionally, it allows applying
-    a sparse mask from `sparse_named_mask_path` to the model. *Note that the 
-    quantization and sparse named mask is only applied to the base model.
-    
+    a sparse mask from `sparse_named_mask_path` to the model.
+
+    *Note that the quantization and sparse named mask is only applied to the base model*
+
     i.e, quantization(sparse(base_model)) + lora_model
 
     Args:
@@ -56,6 +57,10 @@ def load(
             - The tokenizer corresponding to the final model configuration.
     """
 
+    if sparse_named_mask_path and not peft_model_name_or_path:
+        raise ValueError(
+            "Sparse named mask can only be applied to a model with PEFT adapter."
+        )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AutoModelForCausalLM.from_pretrained(
         base_model_name_or_path, load_in_4bit=load_in_4bit

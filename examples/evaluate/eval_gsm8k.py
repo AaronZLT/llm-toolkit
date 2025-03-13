@@ -27,23 +27,8 @@ def eval(
     base_model_name_or_path: str = None,
     peft_model_name_or_path: str = None,
     load_in_4bit: bool = False,
-    sparsity_ratio: float = None,
-    structured_sparse: bool = False,
 ):
     temp_dirs = []  # reserved for temp dirs used in current eval process
-    if structured_sparse:
-        raise NotImplementedError("structured_sparse is not implemented.")
-    if sparsity_ratio:
-        assert sparsity_ratio < 1 and sparsity_ratio > 0
-        sparse_temp_dir = tempfile.mkdtemp(dir=".")
-        temp_dirs.append(sparse_temp_dir)
-        model = AutoModelForCausalLM.from_pretrained(base_model_name_or_path)
-        tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
-        prune_magnitude(model, sparsity_ratio)
-        model.save_pretrained(sparse_temp_dir)
-        tokenizer.save_pretrained(sparse_temp_dir)
-        base_model_name_or_path = sparse_temp_dir
-        print_rank_0(f"base_model_name_or_path has changed to {sparse_temp_dir}.")
 
     if not peft_model_name_or_path:
         acc = infly_evaluate(
@@ -98,6 +83,43 @@ def eval(
 
 if __name__ == "__main__":
     # base model eval 16-bit and 4-bit
+    # eval(
+    #     base_model_name_or_path="/mnt/sdb/zhanglongteng/sdd/zhanglongteng/llama-3-8B-Instruct",
+    #     load_in_4bit=False,
+    # )
+    eval(
+        task = "mmlu",
+        base_model_name_or_path="/mnt/sdb/zhanglongteng/sdd/zhanglongteng/Llama-2-7b-chat-hf",
+        load_in_4bit=False,
+    )
+    exit()
+
+    eval(
+        task = "mmlu",
+        base_model_name_or_path="/mnt/sdb/zhanglongteng/sdd/zhanglongteng/llama-3-8B-Instruct",
+        load_in_4bit=False,
+    )
+    # eval(
+    #     task = "mmlu",
+    #     base_model_name_or_path="/mnt/sdb/zhanglongteng/sdd/zhanglongteng/llama-2-7b-chat-hf",
+    #     load_in_4bit=True,
+    # )
+
+
+    eval(
+        task = "mmlu",
+        base_model_name_or_path="/mnt/sdb/zhanglongteng/sdd/zhanglongteng/llama-3-8B-Instruct",
+        load_in_4bit=True,
+    )
+
+
+
+
+    eval(
+        base_model_name_or_path="/mnt/sdb/zhanglongteng/workspace/llm-toolkit/examples/sparse-finetune/merged",
+        load_in_4bit=False,
+    )
+    exit()
     eval(
         base_model_name_or_path="meta-llama/Llama-2-7b-hf",
         load_in_4bit=False,
