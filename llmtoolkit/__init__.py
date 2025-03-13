@@ -36,6 +36,7 @@ from .model import (
 from .sparse import (
     prune_magnitude,
     apply_sparse,
+    check_sparsity,
 )
 from .load_and_save import (
     load,
@@ -56,6 +57,10 @@ from .trainer import (
 from .inference import (
     single_inference,
     vllm_inference,
+)
+from .config import (
+    QuantConfig,
+    PEFTConfig,
 )
 from .utils import (
     get_rank,

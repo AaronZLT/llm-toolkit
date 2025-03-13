@@ -61,12 +61,29 @@ def find_module_name(model, target_module):
     return None
 
 
-# todo: modify uint8 directly without dequantize and quantize
+# TODO: check if the model is quantized
+@torch.no_grad()
+def check_sparsity(model):
+    for n, m in model.named_modules():
+        if isinstance(m, nn.Linear):
+            print_rank_0(
+                f"Layer {n} sparsity: {torch.sum(m.weight.data == 0).item() / m.weight.numel()}"
+            )
+        elif isinstance(m, bnb.nn.Linear4bit):
+            pass
+        elif isinstance(m, bnb.nn.Linear8bitLt):
+            pass
+        else:
+            pass
+
+
+# TODO: modify uint8 directly without dequantize and quantize
+# TODO: add sparse config to model config
 @torch.no_grad()
 def apply_sparse(model, named_mask: dict):
     for n, m in model.named_modules():
         if n in named_mask:
-            print_rank_0(f"Applying sparse on layer - {n}")
+            print_rank_0(f"Applying sparse to layer - {n}")
             if isinstance(m, bnb.nn.Linear4bit):
                 quant_state = copy.deepcopy(m.quant_state)
                 _dequantize = dequantize_4bit(
@@ -82,7 +99,7 @@ def apply_sparse(model, named_mask: dict):
                     blocksize=quant_state.blocksize,
                     quant_type=quant_state.quant_type,
                 )
-            elif isinstance(m, bnb.nn.Linear8bit):
+            elif isinstance(m, bnb.nn.Linear8bitLt):
                 pass
             else:
                 m.weight.data[named_mask[n].cuda()] = 0
@@ -130,12 +147,13 @@ def prune_magnitude(
     prune_m=0,
     offload=True,
     sparse_preserve_accuracy=False,
-    prune_largest=False,
+    sparse_prune_largest=False,
 ) -> List:
-    if prune_largest and not sparse_preserve_accuracy:
+    if sparse_prune_largest and not sparse_preserve_accuracy:
         print_rank_0(
             "Warning: prune_largest is True, but sparse_preserve_accuracy is False. This may cause accuracy drop."
         )
+
     def _get_mask_prune_magnitude(
         W,
         sparsity_ratio: float,
@@ -215,7 +233,7 @@ def prune_magnitude(
                                 sparsity_ratio,
                                 prune_n,
                                 prune_m,
-                                prune_largest,
+                                sparse_prune_largest,
                             )
                         }
                     )
@@ -268,7 +286,7 @@ def prune_magnitude(
                                 sparsity_ratio,
                                 prune_n,
                                 prune_m,
-                                prune_largest,
+                                sparse_prune_largest,
                             )
                         }
                     )
@@ -314,7 +332,7 @@ def prune_magnitude(
                                 sparsity_ratio,
                                 prune_n,
                                 prune_m,
-                                prune_largest,
+                                sparse_prune_largest,
                             )
                         }
                     )

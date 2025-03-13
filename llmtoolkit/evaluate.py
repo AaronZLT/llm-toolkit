@@ -233,6 +233,7 @@ def infly_evaluate(
     prompts = list(eval_dataset["input"])
     prompt_to_golden = {item["input"]: item["output"] for item in eval_dataset}
     
+    # TODO: check if 1024 for mmlu is enough
     max_tokens = {
         "mmlu": 2048,
         "gsm8k": 1024,
