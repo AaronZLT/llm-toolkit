@@ -171,13 +171,13 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     optim: str = field(
         default="adamw_hf",
         metadata={
-            "help": "The optimizer to be used. Choose adamw_lorafa to use AdamW_lorafa. For now please use --adamw_lorafa True."
+            "help": "The optimizer to be used. Will be no-effective when training_args.adamw is not None."
         },
     )
     adamw: str = field(
         default=None,
         metadata={
-            "help": "The optimizer to be used. Choose from [lorafa, lorapro], or keep it None."
+            "help": "The optimizer to be used. Choose from [lorafa, lorapro], or keep it None to use default optim."
         },
     )
     per_device_train_batch_size: int = field(
