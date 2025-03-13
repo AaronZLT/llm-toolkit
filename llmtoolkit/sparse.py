@@ -175,12 +175,12 @@ def prune_magnitude(
                     W_mask.scatter_(1, ii + idx_to_keep, True)
         else:
             if largest:
-                thresh = torch.sort(W_metric.flatten())[0][
+                thresh = torch.sort(W_metric.flatten(), descending=True)[0][
                     int(W.numel() * sparsity_ratio)
                 ].cpu()
                 W_mask = W_metric >= thresh
             else:
-                thresh = torch.sort(W_metric.flatten(), descending=True)[0][
+                thresh = torch.sort(W_metric.flatten())[0][
                     int(W.numel() * sparsity_ratio)
                 ].cpu()
                 W_mask = W_metric <= thresh
