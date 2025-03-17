@@ -11,7 +11,7 @@ from llmtoolkit import (
     safe_dict2file,
     print_rank_0,
     load,
-    check_embedding_need_to_resize,
+    resize_base_model_and_replace_lmhead_embed_tokens,
 )
 
 
@@ -40,24 +40,19 @@ def eval_peft_model(
     peft_model_name_or_path: str,
     load_in_4bit: bool = False,
 ):
-    resized = check_embedding_need_to_resize(
-        base_model_name_or_path=base_model_name_or_path,
-        peft_model_name_or_path=peft_model_name_or_path,
+    new_model_name_or_path, new_peft_model_name_or_path = (
+        resize_base_model_and_replace_lmhead_embed_tokens(
+            base_model_name_or_path=base_model_name_or_path,
+            peft_model_name_or_path=peft_model_name_or_path,
+        )
     )
-    if resized:
-        acc = infly_evaluate(
-            task=task,
-            model_name_or_path=resized,
-            peft_name_or_path=peft_model_name_or_path,
-            load_in_4bit=load_in_4bit,
-        )
-    else:
-        acc = infly_evaluate(
-            task=task,
-            model_name_or_path=base_model_name_or_path,
-            peft_name_or_path=peft_model_name_or_path,
-            load_in_4bit=load_in_4bit,
-        )
+
+    acc = infly_evaluate(
+        task=task,
+        model_name_or_path=new_model_name_or_path,
+        peft_name_or_path=new_peft_model_name_or_path,
+        load_in_4bit=load_in_4bit,
+    )
     results = {}
     results["model"] = base_model_name_or_path
     results["peft"] = peft_model_name_or_path

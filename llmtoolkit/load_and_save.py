@@ -23,36 +23,88 @@ from .utils import (
 )
 
 
-def check_embedding_need_to_resize(
+def resize_base_model_and_replace_lmhead_embed_tokens(
     base_model_name_or_path: str,
     peft_model_name_or_path: str,
 ):
     """
-    Check if the embedding of base model and peft adapter match.
+    TODO: Copy all the files from old dir to new dir.
     """
+    import tempfile
+    import json
+    from safetensors.torch import load_file, save_file
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
-    peft_tokenizer = AutoTokenizer.from_pretrained(
-        peft_model_name_or_path, torch_dtype=torch.bfloat16
-    )
-    if len(tokenizer) != len(peft_tokenizer):
-        save_url = f"{base_model_name_or_path}_resized_length_{len(peft_tokenizer)}"
-        if os.path.exists(save_url):
-            print_rank_0(
-                f"Resized model already exists at {save_url}. Exiting."
-            )
-            return save_url
+
+    # 1. Load the base model, adapter model, and adapter config
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_name_or_path, torch_dtype=torch.bfloat16
+    ).to(device)
+    adapter_model = load_file(f"{peft_model_name_or_path}/adapter_model.safetensors")
+    with open(
+        f"{peft_model_name_or_path}/adapter_config.json", "r", encoding="utf-8"
+    ) as file:
+        adapter_config = json.load(file)
+
+    # 2. Check if the base model need to be resized
+    base_tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
+    peft_tokenizer = AutoTokenizer.from_pretrained(peft_model_name_or_path)
+    if len(base_tokenizer) != len(peft_tokenizer):
         print_rank_0(
-            f"Resizing the embedding of base model, to match the length of peft adapter, from {len(tokenizer)} to {len(peft_tokenizer)}. The resized model will be saved at {save_url}."
+            f"Resizing the embedding of base model, to match the length of peft adapter, from {len(base_tokenizer)} to {len(peft_tokenizer)}."
         )
-        model = AutoModelForCausalLM.from_pretrained(base_model_name_or_path).to(device)
         model.resize_token_embeddings(len(peft_tokenizer))
-        model.save_pretrained(save_url)
-        peft_tokenizer.save_pretrained(save_url)
-        return save_url
-    else:
-        print_rank_0("The embedding of base model and peft adapter match. Exiting.")
-        return None
+
+    # 3. Replace the lm_head and embed_tokens (i.e., unsupport lora wight in vLLM) with the adapter model
+    # TODO: Check if lm_head and embed_tokens are in the adapter model
+    support_lora_names = [
+        "lora_A",
+        "lora_B",
+        "lora_embedding_A",
+        "lora_embedding_B",
+        "bias",
+    ]
+    support_adapter_model = {}
+    unsupport_adapter_model = {}
+
+    for key, value in adapter_model.items():
+        if any(substring in key for substring in support_lora_names):
+            support_adapter_model[key] = value
+        else:
+            unsupport_adapter_model[key] = value
+
+    for key, value in unsupport_adapter_model.items():
+        for n, m in model.named_parameters():
+            if key in n:
+                print_rank_0(f"Replace {n} with {key}.")
+                m.data = value
+                break
+
+    # 4. Save the resized model and adapter model
+    resized_base_model_path = tempfile.mkdtemp(dir=".")
+    resized_adapter_model_path = tempfile.mkdtemp(dir=".")
+
+    # Save the resized model and tokenizer
+    # Note that the tokenizer is from the adapter model, not the base model
+    model.save_pretrained(resized_base_model_path)
+    peft_tokenizer.save_pretrained(resized_base_model_path)
+
+    # Save the resized adapter model and tokenizer
+    save_file(
+        support_adapter_model, f"{resized_adapter_model_path}/adapter_model.safetensors"
+    )
+    with open(
+        f"{resized_adapter_model_path}/adapter_config.json", "w", encoding="utf-8"
+    ) as file:
+        json.dump(adapter_config, file, ensure_ascii=False, indent=4)
+    peft_tokenizer.save_pretrained(resized_adapter_model_path)
+
+    print_rank_0(
+        f"Finish replacing. The new base model is saved at {resized_base_model_path}. The new adapter model is saved at {resized_adapter_model_path}."
+    )
+
+    # 5. Return the path of the resized model and adapter model
+    return resized_base_model_path, resized_adapter_model_path
 
 
 def load(

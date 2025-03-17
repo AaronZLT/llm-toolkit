@@ -42,7 +42,7 @@ from .load_and_save import (
     load,
     flexible_load,
     merge_and_save,
-    check_embedding_need_to_resize,
+    resize_base_model_and_replace_lmhead_embed_tokens,
 )
 from .train import (
     train,

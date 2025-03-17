@@ -7,6 +7,7 @@ from .utils import (
     print_rank_0,
 )
 
+
 @rank_0
 def single_inference(
     model,
@@ -64,7 +65,18 @@ def vllm_inference(
     sampling_params = SamplingParams(temperature=0.0, top_p=0.1, max_tokens=max_tokens)
 
     if gsi.info["n_gpus"] >= 2:
-        print_rank_0('WARNING: 2 or more gpus are detected, and VLLM will use all gpus to inference. However, a RuntimeError may raised: "An attempt has been made to start a new process before the current process ...". To avoid this error, wrap your code within " if __name__ == "__main__": ". This is a bug in VLLM, an expected behavior when tp >= 2 & ray. For more info please refer to https://github.com/vllm-project/vllm/pull/5669.')
+        print_rank_0(
+            'WARNING: 2 or more gpus are detected, and VLLM will use all gpus to inference. However, a RuntimeError may raised: "An attempt has been made to start a new process before the current process ...". To avoid this error, wrap your code within " if __name__ == "__main__": ". This is a bug in VLLM, an expected behavior when tp >= 2 & ray. For more info please refer to https://github.com/vllm-project/vllm/pull/5669.'
+        )
+
+    if load_in_4bit:
+        print_rank_0(
+            "For now we only support bitsandbytes quantization for load_in_4bit. This may cause slow inference speed and high GPU memory consumption compared to un-quantized inference. You may consider to decrease the gpu_memory_utilization to avoid OOM. Current gpu_memory_utilization is set to 0.9."
+        )
+        print_rank_0(
+            "WARNING: Please note that no-supprt for bitsandbytes quantization with TP. For more info please refer to https://github.com/vllm-project/vllm/discussions/10117."
+        )
+
     vllm_kwargs = {
         "model": model_name_or_path,
         "dtype": torch.bfloat16,
