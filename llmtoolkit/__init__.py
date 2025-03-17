@@ -42,6 +42,7 @@ from .load_and_save import (
     load,
     flexible_load,
     merge_and_save,
+    check_embedding_need_to_resize,
 )
 from .train import (
     train,

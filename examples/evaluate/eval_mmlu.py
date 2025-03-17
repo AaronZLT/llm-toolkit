@@ -11,6 +11,7 @@ from llmtoolkit import (
     safe_dict2file,
     print_rank_0,
     load,
+    check_embedding_need_to_resize,
 )
 
 
@@ -39,23 +40,14 @@ def eval_peft_model(
     peft_model_name_or_path: str,
     load_in_4bit: bool = False,
 ):
-    base_tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
-    peft_tokenizer = AutoTokenizer.from_pretrained(peft_model_name_or_path)
-    if len(base_tokenizer) != len(peft_tokenizer):
-        print_rank_0(
-            f"Since the embedding of base model mismatch peft adapter ({len(base_tokenizer)} - {len(peft_tokenizer)}), merging."
-        )
-        model, tokenizer = load(
-            base_model_name_or_path=base_model_name_or_path,
-            peft_model_name_or_path=peft_model_name_or_path,
-        )
-        print_rank_0(model)
-        print_rank_0("Saving sparsed base model and tokenizer to resized_base_model/")
-        model.base_model.save_pretrained("resized_base_model")
-        tokenizer.save_pretrained("resized_base_model")
+    resized = check_embedding_need_to_resize(
+        base_model_name_or_path=base_model_name_or_path,
+        peft_model_name_or_path=peft_model_name_or_path,
+    )
+    if resized:
         acc = infly_evaluate(
             task=task,
-            model_name_or_path="resized_base_model",
+            model_name_or_path=resized,
             peft_name_or_path=peft_model_name_or_path,
             load_in_4bit=load_in_4bit,
         )
@@ -90,7 +82,7 @@ if __name__ == "__main__":
 
     eval_peft_model(
         task="mmlu",
-        base_model_name_or_path="/mnt/sdb/zhanglongteng/sdd/zhanglongteng/llama-3-8B-Instruct",
-        peft_model_name_or_path="/mnt/sdb/zhanglongteng/workspace/llm-toolkit/examples/finetune/validate/checkpoint-100",
+        base_model_name_or_path="/mnt/sdb/zhanglongteng/sdd/zhanglongteng/Llama-2-7b-chat-hf",
+        peft_model_name_or_path="/mnt/sdb/zhanglongteng/workspace/llm-toolkit/tmp/test_eval_peft/validate/checkpoint-5",
         load_in_4bit=True,
     )

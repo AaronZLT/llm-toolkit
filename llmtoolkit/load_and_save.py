@@ -23,6 +23,38 @@ from .utils import (
 )
 
 
+def check_embedding_need_to_resize(
+    base_model_name_or_path: str,
+    peft_model_name_or_path: str,
+):
+    """
+    Check if the embedding of base model and peft adapter match.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
+    peft_tokenizer = AutoTokenizer.from_pretrained(
+        peft_model_name_or_path, torch_dtype=torch.bfloat16
+    )
+    if len(tokenizer) != len(peft_tokenizer):
+        save_url = f"{base_model_name_or_path}_resized_length_{len(peft_tokenizer)}"
+        if os.path.exists(save_url):
+            print_rank_0(
+                f"Resized model already exists at {save_url}. Exiting."
+            )
+            return save_url
+        print_rank_0(
+            f"Resizing the embedding of base model, to match the length of peft adapter, from {len(tokenizer)} to {len(peft_tokenizer)}. The resized model will be saved at {save_url}."
+        )
+        model = AutoModelForCausalLM.from_pretrained(base_model_name_or_path).to(device)
+        model.resize_token_embeddings(len(peft_tokenizer))
+        model.save_pretrained(save_url)
+        peft_tokenizer.save_pretrained(save_url)
+        return save_url
+    else:
+        print_rank_0("The embedding of base model and peft adapter match. Exiting.")
+        return None
+
+
 def load(
     base_model_name_or_path: str,
     peft_model_name_or_path: str = None,
