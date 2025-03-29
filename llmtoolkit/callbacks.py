@@ -6,7 +6,11 @@ import torch
 import transformers
 from accelerate import Accelerator
 
+from .sparse import (
+    prune_magnitude,
+)
 from .utils import (
+    safe_dict2file,
     get_world_size,
     print_rank_0,
     rank_0,
@@ -187,7 +191,8 @@ class StepInfoCallback(transformers.TrainerCallback):
         # Dump the profile result to profiler.txt
         profile_dict = {}
         profile_dict["key"] = self.key
-        profile_dict["batch_size"] = state.train_batch_size
+        profile_dict["per_device_batch_size"] = state.train_batch_size
+        profile_dict["global_batch_size"] = state.train_batch_size * get_world_size()
         profile_dict["trainable_parameter"] = self.trainable_param
         profile_dict["step_time (s)"] = mean_step_time
         profile_dict["step_time_std (s)"] = std_step_time
@@ -209,3 +214,39 @@ class StepInfoCallback(transformers.TrainerCallback):
 
         gsi.info.update(profile_dict)
         gsi.dump(self.output_dir)
+
+
+class SparseCallbackBase(transformers.TrainerCallback):
+    def __init__(
+        self,
+        model,
+        sparsity_ratio: float,
+        sparse_preserve_accuracy: bool,
+        output_dir: str,
+    ):
+        pass
+
+
+class DynamicSparseCallback(SparseCallbackBase):
+    def __init__(
+        self,
+        model,
+        sparsity_ratio: float = 0.5,
+        sparse_preserve_accuracy: bool = False,
+        sparse_prune_largest: bool = False,
+        sparse_warmup_ratio: float = 0.5,
+        sparse_warmup_steps: int = 2,
+        output_dir: str = "",
+    ):
+        pass
+
+
+class StaticSparseCallback(SparseCallbackBase):
+    def __init__(
+        self,
+        model,
+        sparsity_ratio: float = 0.5,
+        sparse_preserve_accuracy: bool = False,
+        output_dir: str = "",
+    ):
+        pass

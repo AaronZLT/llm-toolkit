@@ -12,12 +12,160 @@ from peft import (
     PeftModel,
 )
 
+from .sparse import (
+    apply_sparse,
+)
 from .utils import (
     print_rank_0,
     is_ipex_available,
     rank_0,
     create_timestamp,
 )
+
+
+def resize_base_model_and_replace_lmhead_embed_tokens(
+    base_model_name_or_path: str,
+    peft_model_name_or_path: str,
+):
+    """
+    TODO: Copy all the files from old dir to new dir.
+    """
+    import tempfile
+    import json
+    from safetensors.torch import load_file, save_file
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # 1. Load the base model, adapter model, and adapter config
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_name_or_path, torch_dtype=torch.bfloat16
+    ).to(device)
+    adapter_model = load_file(f"{peft_model_name_or_path}/adapter_model.safetensors")
+    with open(
+        f"{peft_model_name_or_path}/adapter_config.json", "r", encoding="utf-8"
+    ) as file:
+        adapter_config = json.load(file)
+
+    # 2. Check if the base model need to be resized
+    base_tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
+    peft_tokenizer = AutoTokenizer.from_pretrained(peft_model_name_or_path)
+    if len(base_tokenizer) != len(peft_tokenizer):
+        print_rank_0(
+            f"Resizing the embedding of base model, to match the length of peft adapter, from {len(base_tokenizer)} to {len(peft_tokenizer)}."
+        )
+        model.resize_token_embeddings(len(peft_tokenizer))
+
+    # 3. Replace the lm_head and embed_tokens (i.e., unsupport lora wight in vLLM) with the adapter model
+    # TODO: Check if lm_head and embed_tokens are in the adapter model
+    support_lora_names = [
+        "lora_A",
+        "lora_B",
+        "lora_embedding_A",
+        "lora_embedding_B",
+        "bias",
+    ]
+    support_adapter_model = {}
+    unsupport_adapter_model = {}
+
+    for key, value in adapter_model.items():
+        if any(substring in key for substring in support_lora_names):
+            support_adapter_model[key] = value
+        else:
+            unsupport_adapter_model[key] = value
+
+    for key, value in unsupport_adapter_model.items():
+        for n, m in model.named_parameters():
+            if key in n:
+                print_rank_0(f"Replace {n} with {key}.")
+                m.data = value
+                break
+
+    # 4. Save the resized model and adapter model
+    resized_base_model_path = tempfile.mkdtemp(dir=".")
+    resized_adapter_model_path = tempfile.mkdtemp(dir=".")
+
+    # Save the resized model and tokenizer
+    # Note that the tokenizer is from the adapter model, not the base model
+    model.save_pretrained(resized_base_model_path)
+    peft_tokenizer.save_pretrained(resized_base_model_path)
+
+    # Save the resized adapter model and tokenizer
+    save_file(
+        support_adapter_model, f"{resized_adapter_model_path}/adapter_model.safetensors"
+    )
+    with open(
+        f"{resized_adapter_model_path}/adapter_config.json", "w", encoding="utf-8"
+    ) as file:
+        json.dump(adapter_config, file, ensure_ascii=False, indent=4)
+    peft_tokenizer.save_pretrained(resized_adapter_model_path)
+
+    print_rank_0(
+        f"Finish replacing. The new base model is saved at {resized_base_model_path}. The new adapter model is saved at {resized_adapter_model_path}."
+    )
+
+    # 5. Return the path of the resized model and adapter model
+    return resized_base_model_path, resized_adapter_model_path
+
+
+def load(
+    base_model_name_or_path: str,
+    peft_model_name_or_path: str = None,
+    load_in_4bit: bool = False,
+    sparse_named_mask_path: str = None,
+):
+    """
+    Load a language model with optional PEFT adapter and sparse mask.
+
+    This function loads a pre-trained causal language model and its tokenizer
+    from the given `base_model_name_or_path`. It also supports loading a
+    Parameter-Efficient Fine-Tuning (PEFT) adapter from `peft_model_name_or_path`,
+    resizing the token embeddings if necessary. Additionally, it allows applying
+    a sparse mask from `sparse_named_mask_path` to the model.
+
+    *Note that the quantization and sparse named mask is only applied to the base model*
+
+    i.e, quantization(sparse(base_model)) + lora_model
+
+    Args:
+        base_model_name_or_path (str): Path or name of the base pre-trained model.
+        peft_model_name_or_path (str, optional): Path or name of the PEFT adapter model.
+            If provided, the adapter is loaded and integrated with the base model.
+        load_in_4bit (bool, optional): Whether to load the model in 4-bit precision
+            for reduced memory usage. Default is False.
+        sparse_named_mask_path (str, optional): Path to a sparse named mask file.
+            If provided, the mask is applied to the model.
+
+    Returns:
+        Tuple[torch.nn.Module, transformers.PreTrainedTokenizer]:
+            - The loaded model, with optional PEFT and sparse mask applied.
+            - The tokenizer corresponding to the final model configuration.
+    """
+
+    if sparse_named_mask_path and not peft_model_name_or_path:
+        raise ValueError(
+            "Sparse named mask can only be applied to a model with PEFT adapter."
+        )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_name_or_path, load_in_4bit=load_in_4bit
+    ).to(device)
+    target_tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
+
+    if peft_model_name_or_path:
+        peft_tokenizer = AutoTokenizer.from_pretrained(peft_model_name_or_path)
+        if len(target_tokenizer) != len(peft_tokenizer):
+            print_rank_0(
+                f"Since the embedding of base model mismatch peft adapter ({len(target_tokenizer)} - {len(peft_tokenizer)}), resizing."
+            )
+            model.resize_token_embeddings(len(peft_tokenizer))
+        target_tokenizer = peft_tokenizer
+        model = PeftModel.from_pretrained(model, peft_model_name_or_path)
+
+    if sparse_named_mask_path:
+        named_mask = torch.load(sparse_named_mask_path)
+        apply_sparse(model, named_mask)
+
+    return model, target_tokenizer
 
 
 def flexible_load(args):

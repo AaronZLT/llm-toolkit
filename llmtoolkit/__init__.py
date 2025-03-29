@@ -7,6 +7,7 @@ from .arguments import (
     TrainingArguments,
     GenerationArguments,
     get_args,
+    save_args,
     get_unique_key,
 )
 from .callbacks import (
@@ -16,6 +17,7 @@ from .callbacks import (
 )
 from .dataset import (
     SFTPrompt,
+    PrepareDataset,
     build_data_module,
 )
 from .evaluate import (
@@ -31,9 +33,16 @@ from .model import (
     get_accelerate_model,
     print_trainable_parameters,
 )
+from .sparse import (
+    prune_magnitude,
+    apply_sparse,
+    check_sparsity,
+)
 from .load_and_save import (
+    load,
     flexible_load,
     merge_and_save,
+    resize_base_model_and_replace_lmhead_embed_tokens,
 )
 from .train import (
     train,
@@ -43,11 +52,16 @@ from .train_no_trainer import (
     train_no_trainer,
 )
 from .trainer import (
-    Seq2SeqTrainer_llmtoolkit,
+    BaseSeq2SeqTrainer,
+    Seq2SeqTrainer_optim,
 )
 from .inference import (
     single_inference,
     vllm_inference,
+)
+from .config import (
+    QuantConfig,
+    PEFTConfig,
 )
 from .utils import (
     get_rank,

@@ -1,3 +1,4 @@
+import os
 import argparse
 from typing import Optional, Tuple
 from dataclasses import dataclass, field
@@ -6,6 +7,7 @@ import transformers
 
 from .utils import (
     print_rank_0,
+    safe_dict2file,
 )
 
 
@@ -30,7 +32,7 @@ class ModelArguments:
     peft: Optional[str] = field(
         default=None,
         metadata={
-            "help": "To use peft, choose from [lora|lora-fa|vera|dora|prompt|embedding]"
+            "help": "To use peft, choose from [lora|lorafa|vera|dora|adalora|loraga|prompt|embedding]"
         },
     )
     lora_rank: int = field(
@@ -38,7 +40,12 @@ class ModelArguments:
         metadata={"help": "lora rank, default = 1"},
     )
     lora_alpha: float = field(default=16, metadata={"help": " lora alpha. *Deprecate"})
-    lora_scale: float = field(default=1.0, metadata={"help": "lora scale. This serves the overall scale of (lora_alpha/lora_rank). Suggest to pick from [0.5, 1.0, 2.0]. Default is 1.0."})
+    lora_scale: float = field(
+        default=1.0,
+        metadata={
+            "help": "lora scale. This serves the overall scale of (lora_alpha/lora_rank). Suggest to pick from [0.5, 1.0, 2.0]. Default is 1.0."
+        },
+    )
     lora_dropout: float = field(default=0.0, metadata={"help": "lora dropout."})
     lora_percent: Optional[float] = field(
         default=1.0,
@@ -48,7 +55,9 @@ class ModelArguments:
     )
     init_lora_weights: str = field(
         default=None,
-        metadata={"help": "The method to init LoRA_A. Choose from [pissa, olora]."},
+        metadata={
+            "help": "The method to init lora_A and lora_B. Choose from [gaussian, pissa, olora]."
+        },
     )
     lora_modules: Optional[str] = field(
         default="all",
@@ -60,28 +69,16 @@ class ModelArguments:
         default=False,
         metadata={"help": "Use flash attention? default = False"},
     )
-    quant: bool = field(
-        default=False,
+    quant: str = field(
+        default=None,
         metadata={
-            "help": "Quantize base model into quant_type data format. Default False"
-        },
-    )
-    double_quant: bool = field(
-        default=False,
-        metadata={
-            "help": "Compress the quantization statistics through double quantization."
+            "help": "Quantize base model. Default is None. Choose from [bnb, hqq (hqq is not supported yet)]."
         },
     )
     quant_type: str = field(
         default="nf4",
         metadata={
             "help": "Quantization data type to use. Should be one of `fp4` or `nf4`."
-        },
-    )
-    quant_storage: str = field(
-        default="uint8",
-        metadata={
-            "help": "Data type to store the quantization data. Should be one of ['float16', 'float32', 'int8', 'uint8', 'float64', 'bfloat16']. Default is 'uint8'."
         },
     )
     bits: int = field(
@@ -126,7 +123,7 @@ class DataArguments:
     hard_padding: bool = field(
         default=False,
         metadata={
-            "help": "Force pad the length of input_ids (sequence length) to: source_max_len + target_max_len. Set this to True may impact throughput, but is recommend in benchmark. Default = False."
+            "help": "Force pad the length of input_ids (sequence length) to: source_max_len + target_max_len. Set this to True may impact throughput, but is recommend in benchmark. Set to False is recommend in training. Default = False."
         },
     )
     dataset_name_or_path: str = field(
@@ -172,7 +169,16 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         metadata={"help": "The output dir for logs and checkpoints"},
     )
     optim: str = field(
-        default="adamw_hf", metadata={"help": "The optimizer to be used"}
+        default="adamw_hf",
+        metadata={
+            "help": "The optimizer to be used. Will be no-effective when training_args.adamw is not None."
+        },
+    )
+    adamw: str = field(
+        default=None,
+        metadata={
+            "help": "The optimizer to be used. Choose from [lorafa, lorapro], or keep it None to use default optim."
+        },
     )
     per_device_train_batch_size: int = field(
         default=1,
@@ -268,9 +274,49 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         },
     )
     parallelism: str = field(
-        default='dp',
+        default="dp",
         metadata={
             "help": "Training parallelism, choose from dp|pp, default is dp. This is supported by transformers and accelerate."
+        },
+    )
+    sparse: bool = field(
+        default=False,
+        metadata={"help": "Do sparse on the base model. Default is False."},
+    )
+    sparse_type: str = field(
+        default="dynamic_sparse",
+        metadata={
+            "help": "Sparse mode to use. Should be one of [`dynamic_sparse`, `dynamic_nm_sparse`, 'static_sparse', 'static_nm_sparse']."
+        },
+    )
+    sparsity_ratio: float = field(
+        default=0.5,
+        metadata={
+            "help": "Sparse raito of base model. For example, 0.5 indicates half of the parameters in a linear is 0."
+        },
+    )
+    sparse_warmup_ratio: float = field(
+        default=0.5,
+        metadata={
+            "help": "The ratio of the steps sparse warmup takes / max steps. For example, 0.5 of sparse_warmup_ratio means sparse will only happen in the first 0.5*max_steps steps."
+        },
+    )
+    sparse_warmup_steps: int = field(
+        default=2,
+        metadata={"help": "How many round will the sparse warmup goes."},
+    )
+    sparse_preserve_accuracy: bool = field(
+        default=False,
+        metadata={"help": "Merge sparse W into A and B to preserve accuracy. Default is False."},
+    )
+    sparse_prune_largest: bool = field(
+        default=False,
+        metadata={"help": "If True, prune the largest weights, otherwise prune the smallest weights. Default is False."},
+    )
+    unify_save: bool = field(
+        default=False,
+        metadata={
+            "help": "Save the whole model or just the adapters. Works only when the isinstance(model, PeftModel) is True."
         },
     )
     debug_mode: bool = field(default=False, metadata={"help": "Turn on debug mode."})
@@ -297,7 +343,7 @@ class GenerationArguments:
     num_beams: Optional[int] = field(default=1)
     num_beam_groups: Optional[int] = field(default=1)
     penalty_alpha: Optional[float] = field(default=None)
-    use_cache: Optional[bool] = field(default=True)
+    use_cache: Optional[bool] = field(default=False)
 
     # Hyperparameters for logit manipulation
     temperature: Optional[float] = field(default=0.0)
@@ -369,7 +415,23 @@ def get_unique_key(
         "quant": "quant" if args.quant else None,
         "compute_type": "fp16" if args.fp16 else "bf16" if args.bf16 else "fp32",
         "deepspeed": args.deepspeed,
+        "sparse": f"{args.sparse_type}{args.sparsity_ratio}" if args.sparse else None,
     }
     key = ".".join(value for value in config_dict.values() if value is not None)
 
     return key
+
+
+def save_args(model_args=None, data_args=None, training_args=None, save_dir: str = "."):
+    if model_args is None and data_args is None and training_args is None:
+        print_rank_0("No args to save!")
+        return
+
+    sorted_vars = sorted(
+        vars(
+            argparse.Namespace(
+                **vars(model_args), **vars(data_args), **vars(training_args)
+            )
+        ).items()
+    )
+    safe_dict2file(sorted_vars, os.path.join(save_dir, "args.json"))

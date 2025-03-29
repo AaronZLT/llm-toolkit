@@ -7,6 +7,7 @@ from transformers import (
     set_seed,
 )
 from accelerate.utils import DistributedType
+from peft import PeftModel
 
 from .arguments import (
     ModelArguments,
@@ -18,6 +19,8 @@ from .callbacks import (
     EmptycacheCallback,
     PT_ProfCallback,
     StepInfoCallback,
+    DynamicSparseCallback,
+    StaticSparseCallback,
 )
 from .dataset import (
     build_data_module,
@@ -28,7 +31,8 @@ from .model import (
     print_trainable_parameters,
 )
 from .trainer import (
-    Seq2SeqTrainer_llmtoolkit,
+    BaseSeq2SeqTrainer,
+    Seq2SeqTrainer_optim,
 )
 from .utils import (
     print_rank_0,
@@ -55,14 +59,28 @@ def train(
         model, training_args.debug_mode
     )
 
-    trainer = Seq2SeqTrainer_llmtoolkit(
-        model=model,
-        tokenizer=tokenizer,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        data_collator=data_collator,
-    )
+    # TODO: rename training_args.adamw
+    if training_args.adamw and isinstance(model, PeftModel):
+        trainer = Seq2SeqTrainer_optim(
+            lora_scale=model.peft_config["default"].lora_alpha
+            / model.peft_config["default"].r,
+            adamw=training_args.adamw,
+            model=model,
+            tokenizer=tokenizer,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+        )
+    else:
+        trainer = BaseSeq2SeqTrainer(
+            model=model,
+            tokenizer=tokenizer,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+        )
 
     try:
         print_rank_0(f"device map: {model.hf_device_map}")
@@ -72,6 +90,19 @@ def train(
     # Callbacks
     if training_args.clean_cache:
         trainer.add_callback(EmptycacheCallback)
+
+    if training_args.sparse:
+        trainer.add_callback(
+            DynamicSparseCallback(
+                model=model,
+                sparsity_ratio=training_args.sparsity_ratio,
+                sparse_preserve_accuracy=training_args.sparse_preserve_accuracy,
+                sparse_warmup_ratio=training_args.sparse_warmup_ratio,
+                sparse_warmup_steps=training_args.sparse_warmup_steps,
+                sparse_prune_largest=training_args.sparse_prune_largest,
+                output_dir=training_args.output_dir,
+            )
+        )
 
     trainer.add_callback(
         StepInfoCallback(
@@ -103,13 +134,26 @@ def train(
         train_result = trainer.train()
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)
-        if (
-            training_args.save_strategy is transformers.IntervalStrategy.STEPS
-            or training_args.save_strategy is transformers.IntervalStrategy.EPOCH
-        ):
+        save_strategy = (
+            training_args.save_strategy
+            if isinstance(training_args.save_strategy, str)
+            else training_args.save_strategy.value
+        )
+        if save_strategy == "steps" or save_strategy == "epoch":
             trainer.save_metrics("train", metrics)
             trainer.save_state()
-            trainer.save_model()
+            if training_args.unify_save and isinstance(trainer.model, PeftModel):
+                print_rank_0(
+                    f"merged model will be save at {os.path.join(training_args.output_dir, 'merged')}"
+                )
+                trainer.model = trainer.model.merge_and_unload()
+                trainer.save_model(os.path.join(training_args.output_dir, "merged"))
+            else:
+                trainer.save_model(os.path.join(training_args.output_dir, "save"))
+        else:
+            print_rank_0(
+                "Since save_strategy is neither steps or epoch, there will be no model or checkpoint to save. This is an expected behavior when benchmarking the system efficiency of LLMs, this is an unexpected behavior when fine-tuning LLMs."
+            )
         all_metrics.update(metrics)
     if training_args.do_eval:
         print_rank_0("*** Evaluate ***")
@@ -123,6 +167,8 @@ def train(
             fout.write(json.dumps(all_metrics))
 
 
+# train_cli is deprecate
+# to implement a cli train function, you may warp the 'train' function above
 def train_cli(
     model_args: ModelArguments,
     data_args: DataArguments,
@@ -156,7 +202,7 @@ def train_cli(
         tokenizer, data_args.dataset_name_or_path, data_args
     )
 
-    trainer = Seq2SeqTrainer_llmtoolkit(
+    trainer = BaseSeq2SeqTrainer(
         model=model,
         tokenizer=tokenizer,
         args=training_args,

@@ -89,27 +89,29 @@ def print_rank_0(message):
 
 
 @rank_0
-def safe_dict2file(dictionary: dict, filename: str):
+def safe_dict2file(dictionary: dict, filename: str, overwrite: bool = False):
     lock = threading.Lock()
     with lock:
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        with open(filename, "a") as json_file:
-            json.dump(dictionary, json_file, indent=4)
+        mode = "w" if overwrite else "a"
+        with open(filename, mode, encoding="utf-8") as json_file:
+            json.dump(dictionary, json_file, indent=4, ensure_ascii=False)
             json_file.write("\n")
 
 
 @rank_0
-def safe_list2file(source: List, filename):
+def safe_list2file(source: List, filename: str, overwrite: bool = False):
     lock = threading.Lock()
     with lock:
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        with open(filename, "a") as file:
-            for i in source:
-                file.write(i + "\n")
+        mode = "w" if overwrite else "a"
+        with open(filename, mode, encoding="utf-8") as json_file:
+            json.dump(source, json_file, indent=4, ensure_ascii=False)
+            json_file.write("\n")
 
 
 def safe_readjson(filename):
@@ -183,6 +185,7 @@ def is_ipex_available():
 
 class hardware_info:
     def __init__(self) -> None:
+        self.n_cpus = os.cpu_count()
         self.n_gpus = 0
         self.gpu_info = {}
         self.gpu_info_detailed = []
@@ -247,14 +250,15 @@ class global_system_info:
         self.hardware = hardware_info()
 
         self.info = {
-            "ngpu": self.hardware.n_gpus,
+            "n_cpus": self.hardware.n_cpus,
+            "n_gpus": self.hardware.n_gpus,
             "gpu_info": self.hardware.gpu_info,
             "overhead (s)": {},
         }
 
     def dump(self, output_dir):
         safe_dict2file(self.info, os.path.join(output_dir, "system_info.txt"))
-        
+
     def __repr__(self):
         return f"{self.__class__.__name__}(info={self.info})"
 

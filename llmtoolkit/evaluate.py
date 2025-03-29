@@ -9,6 +9,7 @@ from transformers import AutoTokenizer
 from .utils import (
     print_rank_0,
     safe_dict2file,
+    safe_list2file,
     get_rank,
     create_timestamp,
     require_lib,
@@ -173,6 +174,22 @@ class GSM8KEvaluationStrategy(EvaluationStrategy):
                 return 0
 
 
+class MMLUEvaluationStrategy(EvaluationStrategy):
+    def is_correct(self, golden: str, predicate: str) -> bool:
+        golden_choice = golden.strip()
+        predicate_choice = predicate.strip()
+        if len(predicate_choice) != 0 and len(golden_choice) != 0:
+            golden_choice = golden_choice[0].upper()
+            predicate_choice = predicate_choice[0].upper()
+            if golden_choice not in ["A", "B", "C", "D"]:
+                raise ValueError(
+                    f"The first letter of label '{golden}' not in A, B, C, D. Aborting."
+                )
+            return golden_choice == predicate_choice
+        else:
+            return False
+
+
 class Evaluator:
     def __init__(self, strategy: EvaluationStrategy):
         self.strategy = strategy
@@ -204,6 +221,8 @@ def infly_evaluate(
 ) -> float:
     if task == "gsm8k":
         strategy = GSM8KEvaluationStrategy()
+    elif task == "mmlu":
+        strategy = MMLUEvaluationStrategy()
     else:
         strategy = DefaultEvaluationStrategy()
 
@@ -213,9 +232,15 @@ def infly_evaluate(
     eval_dataset = build_data_module(tokenizer, task)["eval_dataset"]
     prompts = list(eval_dataset["input"])
     prompt_to_golden = {item["input"]: item["output"] for item in eval_dataset}
+    
+    # TODO: check if 1024 for mmlu is enough
+    max_tokens = {
+        "mmlu": 2048,
+        "gsm8k": 1024,
+    }
 
     results = vllm_inference(
-        prompts, model_name_or_path, peft_name_or_path, load_in_4bit=load_in_4bit
+        prompts, model_name_or_path, peft_name_or_path, load_in_4bit=load_in_4bit, max_tokens=max_tokens.get(task, 1024)
     )
 
     inspection = []
@@ -227,5 +252,5 @@ def infly_evaluate(
             inspection.append(
                 {"prompt": prompt, "golden": golden, "predicate": response}
             )
-
+    safe_list2file(inspection, f"eval_{create_timestamp()}.json")
     return evaluator.evaluate(inspection)

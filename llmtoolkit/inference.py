@@ -7,6 +7,7 @@ from .utils import (
     print_rank_0,
 )
 
+
 @rank_0
 def single_inference(
     model,
@@ -53,8 +54,7 @@ def vllm_inference(
     model_name_or_path: str,
     peft_name_or_path: str = None,
     max_lora_rank: int = 128,
-    source_max_len: int = 512,
-    target_max_len: int = 512,
+    max_tokens: int = 1024,
     load_in_4bit: bool = False,
 ) -> list:
     require_lib("vllm")
@@ -62,15 +62,26 @@ def vllm_inference(
     from vllm.lora.request import LoRARequest
     import torch
 
-    max_tokens = source_max_len + target_max_len
     sampling_params = SamplingParams(temperature=0.0, top_p=0.1, max_tokens=max_tokens)
 
-    if gsi.info["ngpu"] >= 2:
-        print_rank_0('WARNING: 2 or more gpus are detected, and VLLM will use all gpus to inference. However, a RuntimeError may raised: "An attempt has been made to start a new process before the current process ...". To avoid this error, wrap your code within " if __name__ == "__main__": ". This is a bug in VLLM, an expected behavior when tp >= 2 & ray. For more info please refer to https://github.com/vllm-project/vllm/pull/5669.')
+    if gsi.info["n_gpus"] >= 2:
+        print_rank_0(
+            'WARNING: 2 or more gpus are detected, and VLLM will use all gpus to inference. However, a RuntimeError may raised: "An attempt has been made to start a new process before the current process ...". To avoid this error, wrap your code within " if __name__ == "__main__": ". This is a bug in VLLM, an expected behavior when tp >= 2 & ray. For more info please refer to https://github.com/vllm-project/vllm/pull/5669.'
+        )
+
+    if load_in_4bit:
+        print_rank_0(
+            "For now we only support bitsandbytes quantization for load_in_4bit. This may cause slow inference speed and high GPU memory consumption compared to un-quantized inference. You may consider to decrease the gpu_memory_utilization to avoid OOM. Current gpu_memory_utilization is set to 0.9."
+        )
+        print_rank_0(
+            "WARNING: Please note that no-supprt for bitsandbytes quantization with TP. For more info please refer to https://github.com/vllm-project/vllm/discussions/10117."
+        )
+
     vllm_kwargs = {
         "model": model_name_or_path,
         "dtype": torch.bfloat16,
-        "tensor_parallel_size": gsi.info["ngpu"],
+        "tensor_parallel_size": gsi.info["n_gpus"],
+        "gpu_memory_utilization": 0.9,
     }
     if load_in_4bit:
         vllm_kwargs.update(
